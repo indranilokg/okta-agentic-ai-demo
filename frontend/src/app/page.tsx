@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
+import IdTokenCard from '@/components/IdTokenCard';
+import RAGCard from '@/components/RAGCard';
 
 interface Message {
   id: string;
@@ -10,12 +12,19 @@ interface Message {
   timestamp: Date;
 }
 
+interface RAGInfo {
+  query: string;
+  documents_count: number;
+  context_preview: string;
+}
+
 export default function StreamwardAssistant() {
   const { data: session, status } = useSession();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [ragInfo, setRagInfo] = useState<RAGInfo | null>(null);
   const [sessionId, setSessionId] = useState<string>(() => {
     // Generate a session ID that persists across page reloads
     if (typeof window !== 'undefined') {
@@ -63,24 +72,120 @@ export default function StreamwardAssistant() {
 
   // Show sign in page if not authenticated
   if (status === 'unauthenticated') {
+    const features = [
+      {
+        icon: (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            <circle cx="12" cy="8" r="2" fill="currentColor" />
+          </svg>
+        ),
+        title: "Employee Management",
+        description: "HR workflows & data"
+      },
+      {
+        icon: (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        ),
+        title: "Partner Integration",
+        description: "External systems"
+      },
+      {
+        icon: (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        ),
+        title: "Policy Compliance",
+        description: "Legal & security"
+      },
+      {
+        icon: (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        ),
+        title: "AI Workflows",
+        description: "Automated processes"
+      }
+    ];
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <img 
-              src="/streamward-icon.png" 
-              alt="Streamward" 
-              className="w-8 h-8"
-            />
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-purple-900 flex">
+        {/* Left Panel - Login Card */}
+        <div className="w-full lg:w-2/5 flex items-center justify-center p-8">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8">
+            {/* Logo */}
+            <div className="mb-8">
+              <div className="flex items-center space-x-2 mb-4">
+                <span className="text-3xl font-bold text-orange-500">Streamward</span>
+                <svg className="w-6 h-6 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">Streamward AI</h1>
+              <p className="text-lg text-gray-700">Enterprise AI Assistant</p>
+            </div>
+
+            {/* Welcome Message */}
+            <div className="mb-8">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">Welcome Back</h2>
+              <p className="text-gray-600">
+                Sign in to access your intelligent enterprise assistant
+              </p>
+            </div>
+
+            {/* Sign In Button */}
+            <button
+              onClick={() => signIn('okta')}
+              className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>Sign in with Okta</span>
+            </button>
+
+            {/* Security Note */}
+            <p className="text-sm text-gray-500 text-center mt-4">
+              Secure enterprise authentication
+            </p>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Streamward AI!</h2>
-          <p className="text-gray-600 mb-6">Please sign in to access the Enterprise AI Assistant.</p>
-          <button
-            onClick={() => signIn('okta')}
-            className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-lg hover:from-indigo-600 hover:to-purple-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
-          >
-            Sign in with Okta
-          </button>
+        </div>
+
+        {/* Right Panel - Features */}
+        <div className="hidden lg:flex lg:w-3/5 flex-col justify-center px-12 py-16">
+          <div className="max-w-2xl">
+            {/* Title */}
+            <h2 className="text-5xl font-bold text-white mb-4">
+              Enterprise AI Assistant
+            </h2>
+            <p className="text-xl text-blue-100 mb-12">
+              Secure, intelligent, and always available
+            </p>
+
+            {/* Feature Cards Grid */}
+            <div className="grid grid-cols-2 gap-6">
+              {features.map((feature, index) => (
+                <div
+                  key={index}
+                  className="bg-blue-800/40 backdrop-blur-sm rounded-xl p-6 border border-blue-700/30 hover:bg-blue-800/50 transition-all duration-200"
+                >
+                  <div className="text-white mb-3">
+                    {feature.icon}
+                  </div>
+                  <h3 className="text-lg font-semibold text-white mb-1">
+                    {feature.title}
+                  </h3>
+                  <p className="text-sm text-blue-200">
+                    {feature.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -115,6 +220,18 @@ export default function StreamwardAssistant() {
       });
 
       const data = await response.json();
+      
+      // Update RAG info if RAG was used
+      if (data.used_rag && data.rag_info) {
+        setRagInfo({
+          query: data.rag_info.query || userMessage.content,
+          documents_count: data.rag_info.documents_count || 0,
+          context_preview: data.rag_info.context_preview || ''
+        });
+      } else {
+        // Clear RAG info if not used
+        setRagInfo(null);
+      }
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -340,9 +457,11 @@ export default function StreamwardAssistant() {
             </div>
           </div>
 
-          {/* Sidebar - System Status */}
+          {/* Sidebar - Token Card, RAG Card, and System Status */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
+              <IdTokenCard idToken={session?.idToken || ''} />
+              <RAGCard ragInfo={ragInfo} />
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
                 <div className="space-y-3">

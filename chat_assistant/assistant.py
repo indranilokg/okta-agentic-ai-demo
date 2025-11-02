@@ -84,10 +84,16 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             
             # If it's a document query, try to get context from RAG
             context = ""
+            rag_query = ""
+            rag_documents_count = 0
+            rag_context_preview = ""
             if is_document_query:
                 try:
                     from rag.context_docs_tool import get_context_docs_fn
                     from langchain_core.runnables import RunnableConfig
+                    
+                    # Store the query for RAG tracking
+                    rag_query = message
                     
                     # Create config with user credentials
                     config = RunnableConfig(
@@ -106,6 +112,20 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                         context_message = f"\n\nRelevant information from authorized documents:\n{context}"
                         openai_messages[0]["content"] += context_message
                         logger.info(f"✅ Added RAG context: {len(context)} characters")
+                        
+                        # Get actual document count from the retriever
+                        try:
+                            from rag.context_docs_tool import document_retriever
+                            # Count documents - they are separated by \n\n
+                            # We need to check the actual number returned by search
+                            temp_docs = await document_retriever.search_documents(message, user_info.get("email", ""))
+                            rag_documents_count = len(temp_docs) if temp_docs else 0
+                        except:
+                            # Fallback: estimate based on separator
+                            rag_documents_count = context.count("\n\n") + 1 if context else 0
+                        
+                        # Create preview (first 300 characters)
+                        rag_context_preview = context[:300] + "..." if len(context) > 300 else context
                     
                 except Exception as e:
                     logger.error(f"RAG context retrieval failed: {e}")
@@ -137,12 +157,19 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             if len(self.sessions[session_id]["conversation_history"]) > 20:
                 self.sessions[session_id]["conversation_history"] = self.sessions[session_id]["conversation_history"][-20:]
             
+            used_rag = bool(context and context != "No authorized documents found for this query.")
+            
             return {
                 "content": content,
                 "agent_type": "Streamward Assistant with RAG",
                 "session_id": session_id,
                 "timestamp": datetime.now().isoformat(),
-                "used_rag": bool(context and context != "No authorized documents found for this query.")
+                "used_rag": used_rag,
+                "rag_info": {
+                    "query": rag_query if used_rag else None,
+                    "documents_count": rag_documents_count if used_rag else 0,
+                    "context_preview": rag_context_preview if used_rag else None
+                } if used_rag else None
             }
             
         except Exception as e:

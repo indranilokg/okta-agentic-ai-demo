@@ -83,10 +83,16 @@ class ChatResponse(BaseModel):
     timestamp: datetime
     session_id: str
 
+class RAGInfo(BaseModel):
+    query: Optional[str] = None
+    documents_count: Optional[int] = 0
+    context_preview: Optional[str] = None
+
 class SimpleChatResponse(BaseModel):
     content: str
     agentType: str
     used_rag: Optional[bool] = None
+    rag_info: Optional[RAGInfo] = None
 
 class WorkflowRequest(BaseModel):
     workflow_type: str
@@ -153,7 +159,8 @@ async def chat_endpoint(request: ChatMessageList, current_user: Optional[dict] =
         return SimpleChatResponse(
             content=response["content"],
             agentType=response["agent_type"],
-            used_rag=response.get("used_rag", False)
+            used_rag=response.get("used_rag", False),
+            rag_info=RAGInfo(**response.get("rag_info", {})) if response.get("rag_info") else None
         )
         
     except Exception as e:
