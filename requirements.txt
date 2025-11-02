@@ -1,0 +1,37 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+python-multipart==0.0.6
+httpx==0.25.2
+python-jose[cryptography]==3.3.0
+cryptography==41.0.7
+langgraph==0.0.20
+langchain==0.0.350
+langchain-openai==0.0.2
+openai>=1.6.1,<2.0.0
+pinecone-client==2.2.4
+python-dotenv==1.0.0
+websockets==12.0
+asyncio-mqtt==0.16.1
+aiofiles==23.2.1
+jinja2==3.1.2
+python-socketio==5.10.0
+eventlet==0.33.3
+# Use pre-built wheels to avoid compilation issues
+pydantic-core==2.14.1
+tiktoken>=0.5.2,<0.6.0
+# Auth0 FGA RAG dependencies
+auth0-ai-langchain>=1.0.0b4
+openfga-sdk>=0.9.5
+langchain-postgres>=0.0.15
+pydantic-settings>=2.10.1
+psycopg>=3.2.9
+psycopg-binary>=3.2.9
+greenlet>=3.2.3
+
+# Pinecone for vector database
+pinecone-client>=3.0.0
+langchain-pinecone>=0.1.0
+
+# Okta token validation
+okta-jwt-verifier>=0.2.3
