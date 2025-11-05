@@ -46,7 +46,7 @@ class OktaTokenValidator:
             }
         
         try:
-            logger.debug(f"Validating token (first 50 chars): {token[:50]}...")
+            logger.debug(f"Validating token: {token}")
             
             # Decode the token (without verification) to get issuer, audience, and claims
             import jwt as pyjwt
@@ -59,21 +59,33 @@ class OktaTokenValidator:
             if not self.verifier or self.issuer != actual_issuer:
                 logger.info(f"Initializing verifier with issuer: {actual_issuer}")
                 
-                # If audience is a URL, use AccessTokenVerifier
-                if actual_audience and (actual_audience.startswith('http://') or actual_audience.startswith('https://')):
+                # Determine token type based on audience:
+                # - URLs (http://, https://) → Access tokens
+                # - API audiences (api://) → Access tokens
+                # - Client IDs (0oa...) → Could be ID token or access token, check token type
+                # - Default: Try ID token verifier first, fall back if needed
+                is_access_token_audience = (
+                    (actual_audience and (actual_audience.startswith('http://') or actual_audience.startswith('https://'))) or
+                    (actual_audience and actual_audience.startswith('api://'))
+                )
+                
+                if is_access_token_audience:
+                    # Use AccessTokenVerifier for access tokens
                     self.verifier = AccessTokenVerifier(
                         issuer=actual_issuer,
                         audience=actual_audience
                     )
-                    logger.info(f"✅ Using AccessTokenVerifier")
+                    logger.info(f"✅ Using AccessTokenVerifier with audience: {actual_audience}")
                 else:
-                    # Use IDTokenVerifier with client_id
+                    # For other audiences, try IDTokenVerifier
+                    # If audience looks like a client ID (0oa...), use it directly
+                    # Otherwise, use configured client_id
                     client_id_to_use = actual_audience if actual_audience and actual_audience.startswith('0oa') else (self.client_id or actual_audience)
                     self.verifier = IDTokenVerifier(
                         issuer=actual_issuer,
                         client_id=client_id_to_use
                     )
-                    logger.info(f"✅ Using IDTokenVerifier")
+                    logger.info(f"✅ Using IDTokenVerifier with client_id: {client_id_to_use}")
                 
                 self.issuer = actual_issuer
             

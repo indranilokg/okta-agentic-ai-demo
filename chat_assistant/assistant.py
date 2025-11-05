@@ -67,11 +67,154 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             
             self.sessions[session_id]["message_count"] += 1
             
-            # Check if this is a document-related query
-            document_keywords = ["document", "documents", "file", "files", "project", "projects", 
-                               "knowledge", "base", "search", "find", "look up", "reference"]
+            # SCENARIO DETECTION WITH CLEAR PRIORITIES
+            # Priority order: RAG > A2A Workflow > MCP > General Chat
             
-            is_document_query = any(keyword in message.lower() for keyword in document_keywords)
+            message_lower = message.lower()
+            detected_scenario = None
+            
+            # 1. RAG Detection - Strong indicators for document queries
+            rag_keywords_strong = ["document", "documents", "file", "files", "search", "find", 
+                                   "look up", "reference", "what are", "what is", "tell me about",
+                                   "show me", "information about", "knowledge base", "knowledge"]
+            rag_keywords_weak = ["project", "projects", "policy", "policies", "compliance", "regulation"]
+            
+            # RAG is detected if:
+            # - Strong RAG keywords present, OR
+            # - Weak RAG keywords + query patterns (what/how/when/where)
+            is_rag_query = (
+                any(keyword in message_lower for keyword in rag_keywords_strong) or
+                (any(keyword in message_lower for keyword in rag_keywords_weak) and 
+                 any(pattern in message_lower for pattern in ["what", "how", "when", "where", "tell me", "show me"]))
+            )
+            
+            # 2. A2A Workflow Detection - Action-oriented, not query-oriented
+            # Only trigger for actual workflow actions, not document queries
+            workflow_action_keywords = {
+                "finance": ["process", "approve", "transaction", "payment", "invoice", "expense"],
+                "hr": ["onboard", "onboarding", "hire", "hiring", "process employee"],
+                "legal": ["review compliance", "verify compliance", "approve contract"]
+            }
+            
+            # Workflow keywords that should NOT trigger if RAG is detected
+            workflow_entity_keywords = {
+                "finance": ["financial", "finance", "budget"],
+                "hr": ["employee", "hr", "human resources", "staff", "benefits"],
+                "legal": ["legal", "compliance", "contract", "regulatory", "law", "attorney"]
+            }
+            
+            detected_workflow = None
+            detected_agent = None
+            
+            # Only detect A2A workflow if:
+            # - NOT a RAG query (clear boundary)
+            # - Contains action keywords (process, approve, onboard, etc.), OR
+            # - Contains entity keywords + action verbs (e.g., "process financial transaction")
+            if not is_rag_query:
+                # Check for explicit action-oriented workflows
+                for agent, action_keywords in workflow_action_keywords.items():
+                    if any(keyword in message_lower for keyword in action_keywords):
+                        detected_agent = agent
+                        if agent == "finance":
+                            detected_workflow = "financial_transaction"
+                        elif agent == "hr":
+                            detected_workflow = "employee_onboarding"
+                        elif agent == "legal":
+                            detected_workflow = "compliance_review"
+                        break
+                
+                # If no action detected, check for entity + action verb patterns
+                if not detected_workflow:
+                    action_verbs = ["need to", "help me", "can you", "process", "approve", "handle", "manage"]
+                    has_action_verb = any(verb in message_lower for verb in action_verbs)
+                    
+                    if has_action_verb:
+                        for agent, entity_keywords in workflow_entity_keywords.items():
+                            if any(keyword in message_lower for keyword in entity_keywords):
+                                detected_agent = agent
+                                if agent == "finance":
+                                    detected_workflow = "financial_transaction"
+                                elif agent == "hr":
+                                    detected_workflow = "employee_onboarding"
+                                elif agent == "legal":
+                                    detected_workflow = "compliance_review"
+                                break
+            
+            # 3. MCP Detection (for future)
+            # Placeholder for MCP scenario detection
+            is_mcp_scenario = False  # Will be implemented later
+            
+            # Log scenario detection
+            if is_rag_query:
+                detected_scenario = "RAG"
+                logger.info(f"📚 Scenario detected: RAG (document query)")
+            elif detected_workflow:
+                detected_scenario = "A2A"
+                logger.info(f"🔄 Scenario detected: A2A Workflow ({detected_workflow})")
+            elif is_mcp_scenario:
+                detected_scenario = "MCP"
+                logger.info(f"🔌 Scenario detected: MCP (Model Context Protocol)")
+            else:
+                detected_scenario = "GENERAL"
+                logger.info(f"💬 Scenario detected: General Chat")
+            
+            # Route to A2A orchestrator ONLY if:
+            # - A2A workflow detected (not RAG)
+            # - User has token for exchange
+            if detected_scenario == "A2A" and detected_workflow and user_info.get("token"):
+                logger.info(f"🎯 Workflow detected: {detected_workflow} for agent: {detected_agent}")
+                logger.info(f"🔄 Routing to orchestrator with token exchange enabled")
+                try:
+                    from orchestrator_agent.orchestrator import OrchestratorAgent
+                    orchestrator = OrchestratorAgent()
+                    
+                    # Extract parameters from message (simplified - could use LLM for better extraction)
+                    # Security: Only include email, not sub (internal ID)
+                    parameters = {
+                        "message": message,
+                        "user_email": user_info.get("email")
+                        # Removed user_sub - internal ID not needed
+                    }
+                    
+                    logger.info(f"🚀 Executing orchestrator workflow: {detected_workflow}")
+                    logger.info(f"📋 Parameters: {parameters}")
+                    logger.info(f"🔐 User has token for exchange: {bool(user_info.get('token'))}")
+                    
+                    workflow_result = await orchestrator.execute_workflow(
+                        workflow_type=detected_workflow,
+                        parameters=parameters,
+                        user_info=user_info
+                    )
+                    
+                    logger.info(f"✅ Orchestrator workflow completed: {workflow_result.get('status')}")
+                    
+                    # Update conversation history
+                    self.sessions[session_id]["conversation_history"].append({"role": "user", "content": message})
+                    self.sessions[session_id]["conversation_history"].append({
+                        "role": "assistant", 
+                        "content": workflow_result.get("response", "Workflow completed successfully")
+                    })
+                    
+                    return {
+                        "content": workflow_result.get("response", "Workflow completed successfully"),
+                        "agent_type": f"Orchestrator ({detected_agent.capitalize()} Agent)",
+                        "session_id": session_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "used_rag": False,
+                        "workflow_info": {
+                            "workflow_type": detected_workflow,
+                            "agent": detected_agent,
+                            "status": workflow_result.get("status")
+                        },
+                        "agent_flow": workflow_result.get("agent_flow", []),  # Agent routing flow
+                        "token_exchanges": workflow_result.get("token_exchanges", []),  # Token exchange details
+                        "source_user_token": workflow_result.get("source_user_token")  # Original user token
+                    }
+                except Exception as e:
+                    logger.error(f"❌ Orchestrator workflow failed: {e}")
+                    import traceback
+                    logger.debug(f"Orchestrator error traceback: {traceback.format_exc()}")
+                    # Fall through to normal chat processing
             
             # Prepare messages for OpenAI with system prompt and conversation history
             openai_messages = [
@@ -82,12 +225,12 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             for msg in self.sessions[session_id]["conversation_history"]:
                 openai_messages.append(msg)
             
-            # If it's a document query, try to get context from RAG
+            # If RAG scenario detected, try to get context from documents
             context = ""
             rag_query = ""
             rag_documents_count = 0
             rag_context_preview = ""
-            if is_document_query:
+            if detected_scenario == "RAG":
                 try:
                     from rag.context_docs_tool import get_context_docs_fn
                     from langchain_core.runnables import RunnableConfig

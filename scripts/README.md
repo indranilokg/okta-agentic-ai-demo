@@ -66,6 +66,35 @@ cd scripts && python clear_pinecone.py
 
 **⚠️ Warning:** This will permanently delete all documents. Use with caution!
 
+### `test_token_exchange.py`
+Tests the RFC 8693 Token Exchange functionality using the Okta AI SDK.
+
+**Usage:**
+```bash
+# From project root
+python scripts/test_token_exchange.py
+
+# Or from scripts directory
+cd scripts && python test_token_exchange.py
+```
+
+**What it does:**
+- Verifies access tokens using SDK's verify_token method
+- Tests token exchange for different agent audiences (HR, Finance, Legal)
+- Simulates A2A (Agent-to-Agent) token exchange chains
+- Tests cross-agent token exchanges (Finance → HR, Finance → Legal)
+- Tests exchanging different token types (access_token, id_token)
+
+**Requirements:**
+- Valid Okta configuration in `.env` file
+- A valid Okta access token (obtained from frontend login, Postman, or OAuth2 flow)
+
+**Getting a test token:**
+1. Log in through the frontend and copy the access token from browser DevTools
+2. Use Postman/OAuth2 flow to obtain a token
+3. Set `TEST_ACCESS_TOKEN` environment variable before running
+4. Or enter token interactively when prompted
+
 ## Prerequisites
 
 1. `.env` file configured in project root

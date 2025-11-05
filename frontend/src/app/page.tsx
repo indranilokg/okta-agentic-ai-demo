@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
+import { checkAndTriggerCustomAuth } from '@/lib/custom-auth';
 import IdTokenCard from '@/components/IdTokenCard';
 import RAGCard from '@/components/RAGCard';
+import AgentFlowCard from '@/components/AgentFlowCard';
+import PromptLibrary from '@/components/PromptLibrary';
 
 interface Message {
   id: string;
@@ -18,13 +21,118 @@ interface RAGInfo {
   context_preview: string;
 }
 
+interface AgentFlowStep {
+  agent: string;
+  step: number;
+  timestamp: string;
+  token_exchange: {
+    from: string;
+    to: string;
+    audience: string;
+  };
+}
+
+interface TokenExchange {
+  from: string;
+  to: string;
+  audience: string;
+  scope: string;
+  token: string;
+}
+
 export default function StreamwardAssistant() {
   const { data: session, status } = useSession();
+  
+  // Check for logout state on mount and clear flag if user is authenticated
+  useEffect(() => {
+    const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromLogout = urlParams.get('from_logout') === 'true';
+    
+    // If user is authenticated, clear the logout flag (fresh login)
+    if (status === 'authenticated' && session && justLoggedOut) {
+      console.log('✅ [Page] User authenticated - clearing logout flag');
+      sessionStorage.removeItem('just-logged-out');
+      // Clean up URL if from_logout param is present
+      if (fromLogout) {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+    } else if (justLoggedOut || fromLogout) {
+      console.log('🚫 [Page] Detected logout state - preventing re-auth');
+      // Set flag if from_logout param is present but flag not set
+      if (fromLogout && !justLoggedOut) {
+        sessionStorage.setItem('just-logged-out', 'true');
+      }
+      // Clear the flag after a shorter delay (user likely already logged back in)
+      setTimeout(() => {
+        sessionStorage.removeItem('just-logged-out');
+        console.log('✅ [Page] Logout flag cleared');
+      }, 2000); // Reduced from 5s to 2s
+    }
+  }, [status, session]);
+  
+  // Log tokens on client side
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      console.log('🌐 [Client-Side] Session tokens available:');
+      console.log('  - Org ID Token:', session.idToken ? `${session.idToken.substring(0, 50)}...` : 'NOT AVAILABLE');
+      console.log('  - Custom Access Token:', session.customAccessToken ? `${session.customAccessToken.substring(0, 50)}...` : 'NOT AVAILABLE');
+      console.log('  - Org Access Token NOT in session (not needed)');
+      console.log('  - Custom ID Token NOT in session (not needed)');
+      console.log('  - Full Org ID Token:', session.idToken);
+      console.log('  - Full Custom Access Token:', session.customAccessToken);
+    }
+  }, [status, session]);
+  
+  // Automatically trigger custom server OAuth flow after org auth succeeds
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      // Check if we just logged out - don't trigger custom auth
+      const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromLogout = urlParams.get('from_logout') === 'true';
+      
+      // Only skip if we're actually coming from logout AND don't have custom token
+      // If user has custom token, they're logged in, so clear the flag
+      if (justLoggedOut || fromLogout) {
+        if (session.customAccessToken) {
+          // User has custom token, so they're properly logged in - clear flag
+          console.log('✅ [Custom Auth] User has custom token - clearing logout flag');
+          sessionStorage.removeItem('just-logged-out');
+        } else {
+          // No custom token and coming from logout - skip for now
+          console.log('🚫 [Custom Auth] Skipping - user just logged out and no custom token yet');
+          return;
+        }
+      }
+      
+      // Check if custom token is needed and trigger OAuth flow
+      checkAndTriggerCustomAuth(!!session.customAccessToken);
+    }
+  }, [status, session]);
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [ragInfo, setRagInfo] = useState<RAGInfo | null>(null);
+  const [agentFlow, setAgentFlow] = useState<AgentFlowStep[] | null>(null);
+  const [tokenExchanges, setTokenExchanges] = useState<TokenExchange[] | null>(null);
+  const [workflowType, setWorkflowType] = useState<string | null>(null);
+  const [sourceUserToken, setSourceUserToken] = useState<string | null>(null);
+  
+  // Debug: Log agent flow state changes
+  useEffect(() => {
+    console.log('🎯 [Page] Agent Flow State:', {
+      agentFlow,
+      tokenExchanges,
+      workflowType,
+      sourceUserToken: sourceUserToken ? `${sourceUserToken.substring(0, 50)}...` : null,
+      agentFlowLength: agentFlow?.length || 0
+    });
+  }, [agentFlow, tokenExchanges, workflowType, sourceUserToken]);
   const [sessionId, setSessionId] = useState<string>(() => {
     // Generate a session ID that persists across page reloads
     if (typeof window !== 'undefined') {
@@ -221,6 +329,15 @@ export default function StreamwardAssistant() {
 
       const data = await response.json();
       
+      // Debug: Log the full response
+      console.log('📨 [Frontend] Full backend response:', JSON.stringify(data, null, 2));
+      console.log('📨 [Frontend] agent_flow:', data.agent_flow);
+      console.log('📨 [Frontend] agent_flow type:', typeof data.agent_flow);
+      console.log('📨 [Frontend] agent_flow isArray:', Array.isArray(data.agent_flow));
+      console.log('📨 [Frontend] agent_flow length:', data.agent_flow?.length);
+      console.log('📨 [Frontend] token_exchanges:', data.token_exchanges);
+      console.log('📨 [Frontend] workflow_info:', data.workflow_info);
+      
       // Update RAG info if RAG was used
       if (data.used_rag && data.rag_info) {
         setRagInfo({
@@ -231,6 +348,32 @@ export default function StreamwardAssistant() {
       } else {
         // Clear RAG info if not used
         setRagInfo(null);
+      }
+      
+      // Update agent flow info if workflow was executed
+      // Check if agent_flow exists and is a non-empty array
+      const hasAgentFlow = data.agent_flow && Array.isArray(data.agent_flow) && data.agent_flow.length > 0;
+      console.log('🔍 [Frontend] hasAgentFlow check:', {
+        exists: !!data.agent_flow,
+        isArray: Array.isArray(data.agent_flow),
+        length: data.agent_flow?.length,
+        hasAgentFlow,
+        fullAgentFlow: data.agent_flow
+      });
+      
+      if (hasAgentFlow) {
+        console.log('✅ [Frontend] Setting agent flow data:', data.agent_flow);
+        setAgentFlow(data.agent_flow);
+        setTokenExchanges(data.token_exchanges || null);
+        setWorkflowType(data.workflow_info?.workflow_type || null);
+        setSourceUserToken(data.source_user_token || null);
+      } else {
+        console.log('⚠️ [Frontend] No agent_flow data in response - clearing card');
+        // Always clear on next prompt (hide card when no workflow data)
+        setAgentFlow(null);
+        setTokenExchanges(null);
+        setWorkflowType(null);
+        setSourceUserToken(null);
       }
       
       const assistantMessage: Message = {
@@ -272,30 +415,44 @@ export default function StreamwardAssistant() {
     "What's the dress code policy?"
   ];
 
-  const handleLogout = () => {
-    // First, sign out from NextAuth
-    signOut({ 
-      callbackUrl: '/',
-      redirect: false 
-    }).then(() => {
-      // Then redirect to Okta logout with proper parameters
-      const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://ijtestcustom.oktapreview.com';
-      const clientId = process.env.NEXT_PUBLIC_OKTA_CLIENT_ID;
+  const handleLogout = async () => {
+    try {
+      // Set logout flag to prevent custom auth from triggering
+      // Store timestamp so we can detect stale flags
+      sessionStorage.setItem('just-logged-out', 'true');
+      sessionStorage.setItem('just-logged-out-time', Date.now().toString());
       
-      // Use OIDC logout with id_token_hint if available (with post_logout_redirect_uri)
-      if (clientId && session?.idToken) {
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${session.idToken}&post_logout_redirect_uri=${encodeURIComponent('http://localhost:3000')}`;
-        window.location.href = oktaLogoutUrl;
-      } else if (clientId) {
-        // Fallback to client_id based logout (with post_logout_redirect_uri)
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?client_id=${clientId}&post_logout_redirect_uri=${encodeURIComponent('http://localhost:3000')}`;
-        window.location.href = oktaLogoutUrl;
-      } else {
-        // Fallback to basic logout
-        const oktaLogoutUrl = `${oktaBaseUrl}/login/signout`;
-        window.location.href = oktaLogoutUrl;
-      }
-    });
+      // IMPORTANT: Get ID token from session BEFORE calling signOut (session will be cleared)
+      const idToken = session?.idToken;
+      console.log('🔐 [Logout] ID Token available:', !!idToken);
+      
+      // Clear client-side storage first
+      sessionStorage.removeItem('custom-auth-initiated');
+      sessionStorage.removeItem('custom-auth-state');
+      sessionStorage.removeItem('custom-auth-verifier');
+      console.log('🧹 Cleared sessionStorage');
+      
+      // Sign out from NextAuth - this clears the session cookie
+      // Use redirect: false so we can handle cookie clearing and Okta logout
+      await signOut({ 
+        callbackUrl: window.location.origin,
+        redirect: false
+      });
+      
+      // Pass ID token to signout API via query param if available
+      // This ensures we have it even after session is cleared
+      const idTokenParam = idToken ? `&id_token=${encodeURIComponent(idToken)}` : '';
+      
+      // Then call our signout API to clear all cookies and optionally redirect to Okta
+      // This ensures cookies are cleared server-side
+      // The just-logged-out flag will persist across redirects
+      window.location.href = `/api/auth/signout?redirect_to_okta=true${idTokenParam}`;
+    } catch (error) {
+      console.error('Error during logout:', error);
+      // Even on error, redirect to home page with logout flag
+      sessionStorage.setItem('just-logged-out', 'true');
+      window.location.href = '/';
+    }
   };
 
   return (
@@ -318,6 +475,15 @@ export default function StreamwardAssistant() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <PromptLibrary 
+                onSelectPrompt={(prompt) => {
+                  setInput(prompt);
+                  // Focus the input field after a short delay
+                  setTimeout(() => {
+                    inputRef.current?.focus();
+                  }, 100);
+                }} 
+              />
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span className="text-sm text-gray-500">Online</span>
@@ -424,6 +590,7 @@ export default function StreamwardAssistant() {
                 <form onSubmit={handleSubmit} className="flex items-end space-x-3">
                   <div className="flex-1 relative">
                     <input
+                      ref={inputRef}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder="Ask me anything about Streamward policies, benefits, or procedures..."
@@ -457,11 +624,18 @@ export default function StreamwardAssistant() {
             </div>
           </div>
 
-          {/* Sidebar - Token Card, RAG Card, and System Status */}
+          {/* Sidebar - Token Card, RAG Card, Agent Flow Card, and System Status */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
               <IdTokenCard idToken={session?.idToken || ''} />
               <RAGCard ragInfo={ragInfo} />
+              {/* Agent Flow Card - Always visible */}
+              <AgentFlowCard 
+                agentFlow={agentFlow} 
+                tokenExchanges={tokenExchanges}
+                workflowType={workflowType || undefined}
+                sourceUserToken={sourceUserToken}
+              />
               <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
                 <div className="space-y-3">

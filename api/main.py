@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import asyncio
 import json
@@ -18,11 +18,31 @@ from api.routes.documents import router as documents_router
 from auth.okta_validator import get_current_user_optional
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)  # Temporarily set to DEBUG to see token validation
+# 
+# Logging Strategy:
+# - Root logger: INFO level (reduces noise while keeping important logs visible)
+# - Suppress noisy third-party libraries (OpenAI, httpx, etc.) to WARNING
+# - Keep token exchange and agent logs at INFO for clear visibility
+# - This ensures token exchange flow is clearly visible without OpenAI DEBUG clutter
+#
+logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
-# Set specific loggers to INFO to reduce noise
+
+# Suppress noisy third-party library logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)  # Suppress OpenAI DEBUG logs (e.g., "DEBUG:openai._base_client")
+logging.getLogger("openai._base_client").setLevel(logging.WARNING)
+logging.getLogger("langchain_openai").setLevel(logging.WARNING)  # Suppress LangChain OpenAI DEBUG logs
+
+# Keep important loggers at INFO level for token exchange visibility
+# These logs clearly show the token exchange flow:
+logging.getLogger("auth.okta_auth").setLevel(logging.INFO)  # Token exchange logs (🔄 [Token Exchange])
+logging.getLogger("auth.okta_validator").setLevel(logging.INFO)  # Token validation logs
+logging.getLogger("orchestrator_agent").setLevel(logging.INFO)  # Orchestrator workflow logs
+logging.getLogger("a2a_agents").setLevel(logging.INFO)  # Agent processing logs
+logging.getLogger("chat_assistant").setLevel(logging.INFO)  # Chat assistant logs
+logging.getLogger("api.main").setLevel(logging.INFO)  # API endpoint logs
 
 app = FastAPI(
     title="Streamward AI Assistant API",
@@ -88,11 +108,31 @@ class RAGInfo(BaseModel):
     documents_count: Optional[int] = 0
     context_preview: Optional[str] = None
 
+class AgentFlowStep(BaseModel):
+    agent: str
+    step: int
+    timestamp: str
+    token_exchange: Dict[str, Any]
+
+class TokenExchangeInfo(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    audience: str
+    scope: str
+    token: str
+
+    class Config:
+        populate_by_name = True
+
 class SimpleChatResponse(BaseModel):
     content: str
     agentType: str
     used_rag: Optional[bool] = None
     rag_info: Optional[RAGInfo] = None
+    workflow_info: Optional[Dict[str, Any]] = None
+    agent_flow: Optional[List[Dict[str, Any]]] = None
+    token_exchanges: Optional[List[Dict[str, Any]]] = None
+    source_user_token: Optional[str] = None  # Original user token that initiated the workflow
 
 class WorkflowRequest(BaseModel):
     workflow_type: str
@@ -119,7 +159,7 @@ async def health_check():
     return {"status": "healthy", "timestamp": datetime.now()}
 
 @app.post("/api/chat", response_model=SimpleChatResponse)
-async def chat_endpoint(request: ChatMessageList, current_user: Optional[dict] = Depends(get_current_user_optional)):
+async def chat_endpoint(request: ChatMessageList, http_request: Request, current_user: Optional[dict] = Depends(get_current_user_optional)):
     """Main chat endpoint that routes messages to appropriate agents"""
     try:
         # Get the last message from the conversation
@@ -134,20 +174,54 @@ async def chat_endpoint(request: ChatMessageList, current_user: Optional[dict] =
         
         logger.info(f"Chat message: {user_message} (session: {session_id})")
         
-        # Use real user if authenticated, otherwise use mock for demo
-        if current_user:
-            logger.info(f"✅ Authenticated user: {current_user.get('email')}")
-            user_info = current_user
+        # Extract custom access token from X-Custom-Access-Token header (for token exchange)
+        custom_access_token = http_request.headers.get('X-Custom-Access-Token')
+        if custom_access_token:
+            logger.info(f"✅ Received custom access token: {custom_access_token}")
         else:
-            logger.warning("⚠️ No authenticated user - using demo user (check if token is being forwarded)")
+            logger.warning("⚠️ No custom access token in X-Custom-Access-Token header")
+        
+        # Build user_info - prioritize in this order:
+        # 1. User from Authorization header (if provided)
+        # 2. User from custom access token (validate and extract user info)
+        # 3. Demo user (fallback)
+        user_info = None
+        
+        if current_user:
+            # User authenticated via Authorization header
+            logger.info(f"✅ Authenticated user from Authorization header: {current_user.get('email')}")
+            user_info = current_user.copy()
+        elif custom_access_token:
+            # Validate custom access token and extract user info
+            logger.info("🔍 Validating custom access token to extract user info...")
+            try:
+                from auth.okta_validator import token_validator
+                validated_user = await token_validator.validate_token(custom_access_token)
+                if validated_user:
+                    logger.info(f"✅ Validated user from custom access token: {validated_user.get('email')}")
+                    user_info = validated_user
+                else:
+                    logger.warning("⚠️ Custom access token validation returned None")
+            except Exception as e:
+                logger.error(f"⚠️ Error validating custom access token: {e}")
+        
+        if not user_info:
+            # Fallback to demo user
+            logger.warning("⚠️ No authenticated user - using demo user")
             user_info = {
                 "sub": "demo-user",
                 "email": "demo@streamward.com",
                 "name": "Demo User"
             }
         
+        # Always add custom access token to user_info for token exchange (if available)
+        if custom_access_token:
+            user_info["token"] = custom_access_token
+            logger.info("✅ Custom access token added to user_info for token exchange")
+        
         logger.info(f"Using user: {user_info['email']}")
         logger.info(f"User details: sub={user_info.get('sub')}, name={user_info.get('name')}, email={user_info.get('email')}")
+        logger.info(f"Has token for exchange: {'Yes' if user_info.get('token') else 'No'}")
         
         # Process message through Streamward Assistant (with memory management)
         response = await streamward_assistant.process_message(
@@ -156,12 +230,26 @@ async def chat_endpoint(request: ChatMessageList, current_user: Optional[dict] =
             session_id
         )
         
-        return SimpleChatResponse(
+        # Log agent flow data for debugging
+        if response.get("agent_flow"):
+            logger.info(f"📊 [API] Agent flow data: {len(response.get('agent_flow', []))} steps")
+            logger.info(f"📊 [API] Token exchanges: {len(response.get('token_exchanges', []))} exchanges")
+        
+        response_data = SimpleChatResponse(
             content=response["content"],
             agentType=response["agent_type"],
             used_rag=response.get("used_rag", False),
-            rag_info=RAGInfo(**response.get("rag_info", {})) if response.get("rag_info") else None
+            rag_info=RAGInfo(**response.get("rag_info", {})) if response.get("rag_info") else None,
+            workflow_info=response.get("workflow_info"),
+            agent_flow=response.get("agent_flow"),
+            token_exchanges=response.get("token_exchanges"),
+            source_user_token=response.get("source_user_token")
         )
+        
+        # Log what we're returning
+        logger.info(f"📤 [API] Returning response with agent_flow: {bool(response_data.agent_flow)}, token_exchanges: {bool(response_data.token_exchanges)}")
+        
+        return response_data
         
     except Exception as e:
         logger.error(f"Chat processing error: {e}")

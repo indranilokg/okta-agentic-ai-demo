@@ -1,6 +1,8 @@
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+import os
+import hashlib
+from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
 import uuid
 import json
@@ -14,6 +16,7 @@ from a2a_agents.hr_agent import HRAgent
 from a2a_agents.finance_agent import FinanceAgent
 from a2a_agents.legal_agent import LegalAgent
 from auth.okta_auth import OktaAuth
+from auth.okta_scopes import OKTA_SCOPES, get_default_hr_scopes, get_default_finance_scopes, get_default_legal_scopes
 
 logger = logging.getLogger(__name__)
 
@@ -30,36 +33,77 @@ class OrchestratorAgent:
             max_tokens=1500
         )
         
-        # Initialize A2A agents
-        self.hr_agent = HRAgent()
-        self.finance_agent = FinanceAgent()
-        self.legal_agent = LegalAgent()
-        
-        # Initialize auth
+        # Initialize auth first
         self.okta_auth = OktaAuth()
+        
+        # Initialize A2A agents with OktaAuth for token exchange
+        self.hr_agent = HRAgent(okta_auth=self.okta_auth)
+        self.finance_agent = FinanceAgent(okta_auth=self.okta_auth)
+        self.legal_agent = LegalAgent(okta_auth=self.okta_auth)
         
         # Workflow state management
         self.active_workflows: Dict[str, Dict[str, Any]] = {}
         
         # Build LangGraph workflow
         self.workflow_graph = self._build_workflow_graph()
+    
+    def _create_minimal_user_info(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create minimal user_info for LLM with privacy controls.
+        Security: Remove all token claims, internal IDs, and unnecessary metadata.
+        
+        Privacy Levels (controlled by env var ALLOW_PII_IN_LLM_PROMPTS):
+        - False (default): Anonymous user ID only (maximum privacy, GDPR compliant)
+        - True: Email + name (enhanced UX, requires consent)
+        """
+        minimal = {}
+        
+        # Privacy setting: Check if PII (email/name) is allowed in LLM prompts
+        # Default: False (maximum privacy - use anonymous ID only)
+        allow_pii = os.getenv("ALLOW_PII_IN_LLM_PROMPTS", "false").lower() == "true"
+        
+        if allow_pii:
+            # Privacy Level 3: Enhanced UX - Include email/name (with consent)
+            # WARNING: This sends PII to third-party LLM. Ensure user consent and org policy allows.
+            if user_info.get("email"):
+                minimal["email"] = user_info["email"]
+            if user_info.get("name"):
+                minimal["name"] = user_info["name"]
+            logger.info("⚠️ Privacy Level 3: Sending email/name to LLM (PII exposure)")
+        else:
+            # Privacy Level 1: Maximum Privacy - Anonymous ID only
+            # Generate consistent anonymous ID from email hash (non-reversible)
+            email = user_info.get("email", "anonymous")
+            # Use consistent salt from env or default
+            salt = os.getenv("ANONYMOUS_ID_SALT", "streamward-privacy-salt")
+            anonymous_id = hashlib.sha256(f"{email}{salt}".encode()).hexdigest()[:16]
+            minimal["user_id"] = f"user_{anonymous_id}"  # e.g., "user_a3f5b2c1d9e8f7a6"
+            logger.debug("🔒 Privacy Level 1: Using anonymous user ID (no PII exposure)")
+        
+        # Don't include: sub, token, claims, groups, given_name, family_name, etc.
+        # These don't help the LLM and expose unnecessary information
+        logger.debug(f"🔒 Created minimal user_info: {list(minimal.keys())} (removed token, claims, and other metadata)")
+        
+        return minimal
 
     def _build_workflow_graph(self) -> StateGraph:
         """Build LangGraph workflow for orchestrating multi-agent processes"""
         
-        # Define the state
-        class WorkflowState:
+        # Define the state as TypedDict (required by LangGraph)
+        class WorkflowState(TypedDict):
             messages: List[Any]
             workflow_type: str
             parameters: Dict[str, Any]
             user_info: Dict[str, Any]
             workflow_id: str
             current_step: str
-            hr_result: Optional[Dict[str, Any]] = None
-            finance_result: Optional[Dict[str, Any]] = None
-            legal_result: Optional[Dict[str, Any]] = None
-            final_result: Optional[Dict[str, Any]] = None
-            error: Optional[str] = None
+            hr_result: Optional[Dict[str, Any]]
+            finance_result: Optional[Dict[str, Any]]
+            legal_result: Optional[Dict[str, Any]]
+            final_result: Optional[Dict[str, Any]]
+            error: Optional[str]
+            agent_flow: List[Dict[str, Any]]  # Track agent call sequence
+            token_exchanges: List[Dict[str, Any]]  # Track all token exchanges
         
         # Create the graph
         workflow = StateGraph(WorkflowState)
@@ -72,12 +116,82 @@ class OrchestratorAgent:
         workflow.add_node("coordination", self._coordination_node)
         workflow.add_node("finalization", self._finalization_node)
         
-        # Add edges
-        workflow.add_edge("orchestrator", "hr_agent")
-        workflow.add_edge("orchestrator", "finance_agent")
-        workflow.add_edge("orchestrator", "legal_agent")
-        workflow.add_edge("hr_agent", "coordination")
-        workflow.add_edge("finance_agent", "coordination")
+        # Set entry point (graph needs an entry point from START)
+        workflow.set_entry_point("orchestrator")
+        
+        # Add conditional routing from orchestrator to agent(s) based on workflow type
+        def route_to_agent(state: Dict[str, Any]) -> str:
+            """Route to specific agent(s) based on workflow type"""
+            workflow_type = state.get("workflow_type", "")
+            
+            # For employee_onboarding, we need all 3 agents - route to HR first
+            if "employee" in workflow_type or "onboard" in workflow_type:
+                return "hr_agent"
+            elif "hr" in workflow_type:
+                return "hr_agent"
+            elif "financial" in workflow_type or "finance" in workflow_type or "transaction" in workflow_type:
+                return "finance_agent"
+            elif "legal" in workflow_type or "compliance" in workflow_type:
+                return "legal_agent"
+            else:
+                # Default to finance for now
+                return "finance_agent"
+        
+        workflow.add_conditional_edges(
+            "orchestrator",
+            route_to_agent,
+            {
+                "hr_agent": "hr_agent",
+                "finance_agent": "finance_agent",
+                "legal_agent": "legal_agent"
+            }
+        )
+        
+        # Add conditional routing from HR agent - if employee_onboarding, continue to Finance
+        def route_from_hr(state: Dict[str, Any]) -> str:
+            """Route from HR agent - if employee_onboarding, continue to Finance and Legal"""
+            workflow_type = state.get("workflow_type", "")
+            hr_result = state.get("hr_result")
+            
+            # If employee onboarding and HR is done, continue to Finance
+            if ("employee" in workflow_type or "onboard" in workflow_type) and hr_result:
+                logger.info("🔄 Employee onboarding: HR complete, routing to Finance Agent")
+                return "finance_agent"
+            else:
+                return "coordination"
+        
+        workflow.add_conditional_edges(
+            "hr_agent",
+            route_from_hr,
+            {
+                "finance_agent": "finance_agent",
+                "coordination": "coordination"
+            }
+        )
+        
+        # Add conditional routing from Finance agent - if employee_onboarding, continue to Legal
+        def route_from_finance(state: Dict[str, Any]) -> str:
+            """Route from Finance agent - if employee_onboarding, continue to Legal"""
+            workflow_type = state.get("workflow_type", "")
+            finance_result = state.get("finance_result")
+            
+            # If employee onboarding and Finance is done, continue to Legal
+            if ("employee" in workflow_type or "onboard" in workflow_type) and finance_result:
+                logger.info("🔄 Employee onboarding: Finance complete, routing to Legal Agent")
+                return "legal_agent"
+            else:
+                return "coordination"
+        
+        workflow.add_conditional_edges(
+            "finance_agent",
+            route_from_finance,
+            {
+                "legal_agent": "legal_agent",
+                "coordination": "coordination"
+            }
+        )
+        
+        # From Legal agent, always go to coordination
         workflow.add_edge("legal_agent", "coordination")
         workflow.add_edge("coordination", "finalization")
         workflow.add_edge("finalization", END)
@@ -100,7 +214,9 @@ class OrchestratorAgent:
                 "parameters": parameters,
                 "user_info": user_info,
                 "workflow_id": workflow_id,
-                "current_step": "orchestrator"
+                "current_step": "orchestrator",
+                "agent_flow": [],  # Track agent calls and token exchanges
+                "token_exchanges": []  # Track all token exchanges
             }
             
             # Store active workflow
@@ -120,6 +236,9 @@ class OrchestratorAgent:
             self.active_workflows[workflow_id]["completed_at"] = datetime.now()
             self.active_workflows[workflow_id]["result"] = result.get("final_result")
             
+            # Capture source user token (for display in UI)
+            source_user_token = user_info.get("token")
+            
             return {
                 "workflow_id": workflow_id,
                 "status": "completed",
@@ -128,7 +247,10 @@ class OrchestratorAgent:
                     "workflow_type": workflow_type,
                     "execution_time": (datetime.now() - self.active_workflows[workflow_id]["started_at"]).total_seconds(),
                     "agents_involved": ["hr_agent", "finance_agent", "legal_agent"]
-                }
+                },
+                "agent_flow": result.get("agent_flow", []),  # Agent call sequence
+                "token_exchanges": result.get("token_exchanges", []),  # All token exchanges
+                "source_user_token": source_user_token  # Original user token that initiated the flow
             }
             
         except Exception as e:
@@ -194,17 +316,49 @@ class OrchestratorAgent:
             
             logger.info(f"HR Agent processing workflow: {workflow_type}")
             
-            # Exchange token for HR agent access
+            # Extract token before sanitizing user_info (security: don't send tokens to LLM)
+            user_token = user_info.get("token", "mock-token")
+            
+            # Create minimal user_info with only essential fields (security: minimize data exposure)
+            minimal_user_info = self._create_minimal_user_info(user_info)
+            
+            # Exchange token for HR agent access (Chat Assistant credentials, HR server scopes)
             hr_token = await self.okta_auth.exchange_token(
-                user_info.get("token", "mock-token"),
-                "hr-agent-audience"
+                user_token,
+                self.okta_auth.hr_audience,
+                scope=get_default_hr_scopes()  # HR server scopes
             )
             
-            # Process through HR agent
+            # Track token exchange
+            if "token_exchanges" not in state:
+                state["token_exchanges"] = []
+            state["token_exchanges"].append({
+                "from": "user",
+                "to": "hr_agent",
+                "audience": self.okta_auth.hr_audience,
+                "scope": get_default_hr_scopes(),
+                "token": hr_token
+            })
+            
+            # Track agent call
+            if "agent_flow" not in state:
+                state["agent_flow"] = []
+            state["agent_flow"].append({
+                "agent": "hr_agent",
+                "step": len(state.get("agent_flow", [])) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "token_exchange": {
+                    "from": "user",
+                    "to": "hr_agent",
+                    "audience": self.okta_auth.hr_audience
+                }
+            })
+            
+            # Process through HR agent (pass minimal user_info - only email/name, no token/claims)
             hr_result = await self.hr_agent.process_workflow_task(
                 workflow_type,
                 parameters,
-                user_info,
+                minimal_user_info,  # Security: Minimal data - only email/name
                 hr_token
             )
             
@@ -227,17 +381,49 @@ class OrchestratorAgent:
             
             logger.info(f"Finance Agent processing workflow: {workflow_type}")
             
-            # Exchange token for Finance agent access
+            # Extract token before sanitizing user_info (security: don't send tokens to LLM)
+            user_token = user_info.get("token", "mock-token")
+            
+            # Create minimal user_info with only essential fields (security: minimize data exposure)
+            minimal_user_info = self._create_minimal_user_info(user_info)
+            
+            # Exchange token for Finance agent access (Chat Assistant credentials, Finance server scopes)
             finance_token = await self.okta_auth.exchange_token(
-                user_info.get("token", "mock-token"),
-                "finance-agent-audience"
+                user_token,
+                self.okta_auth.finance_audience,
+                scope=get_default_finance_scopes()  # Finance server scopes
             )
             
-            # Process through Finance agent
+            # Track token exchange
+            if "token_exchanges" not in state:
+                state["token_exchanges"] = []
+            state["token_exchanges"].append({
+                "from": "user",
+                "to": "finance_agent",
+                "audience": self.okta_auth.finance_audience,
+                "scope": get_default_finance_scopes(),
+                "token": finance_token
+            })
+            
+            # Track agent call
+            if "agent_flow" not in state:
+                state["agent_flow"] = []
+            state["agent_flow"].append({
+                "agent": "finance_agent",
+                "step": len(state.get("agent_flow", [])) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "token_exchange": {
+                    "from": "user",
+                    "to": "finance_agent",
+                    "audience": self.okta_auth.finance_audience
+                }
+            })
+            
+            # Process through Finance agent (pass minimal user_info - only email/name, no token/claims)
             finance_result = await self.finance_agent.process_workflow_task(
                 workflow_type,
                 parameters,
-                user_info,
+                minimal_user_info,  # Security: Minimal data - only email/name
                 finance_token
             )
             
@@ -260,17 +446,49 @@ class OrchestratorAgent:
             
             logger.info(f"Legal Agent processing workflow: {workflow_type}")
             
-            # Exchange token for Legal agent access
+            # Extract token before sanitizing user_info (security: don't send tokens to LLM)
+            user_token = user_info.get("token", "mock-token")
+            
+            # Create minimal user_info with only essential fields (security: minimize data exposure)
+            minimal_user_info = self._create_minimal_user_info(user_info)
+            
+            # Exchange token for Legal agent access (Chat Assistant credentials, Legal server scopes)
             legal_token = await self.okta_auth.exchange_token(
-                user_info.get("token", "mock-token"),
-                "legal-agent-audience"
+                user_token,
+                self.okta_auth.legal_audience,
+                scope=get_default_legal_scopes()  # Legal server scopes
             )
             
-            # Process through Legal agent
+            # Track token exchange
+            if "token_exchanges" not in state:
+                state["token_exchanges"] = []
+            state["token_exchanges"].append({
+                "from": "user",
+                "to": "legal_agent",
+                "audience": self.okta_auth.legal_audience,
+                "scope": get_default_legal_scopes(),
+                "token": legal_token
+            })
+            
+            # Track agent call
+            if "agent_flow" not in state:
+                state["agent_flow"] = []
+            state["agent_flow"].append({
+                "agent": "legal_agent",
+                "step": len(state.get("agent_flow", [])) + 1,
+                "timestamp": datetime.now().isoformat(),
+                "token_exchange": {
+                    "from": "user",
+                    "to": "legal_agent",
+                    "audience": self.okta_auth.legal_audience
+                }
+            })
+            
+            # Process through Legal agent (pass minimal user_info - only email/name, no token/claims)
             legal_result = await self.legal_agent.process_workflow_task(
                 workflow_type,
                 parameters,
-                user_info,
+                minimal_user_info,  # Security: Minimal data - only email/name
                 legal_token
             )
             
@@ -284,6 +502,41 @@ class OrchestratorAgent:
             state["legal_result"] = {"error": str(e)}
             return state
 
+    def _sanitize_agent_result(self, result: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Sanitize agent result to remove tokens and sensitive data before sending to LLM"""
+        if not result:
+            return {}
+        
+        sanitized = result.copy()
+        
+        # Remove token_exchanges (contains actual tokens)
+        if "token_exchanges" in sanitized:
+            # Keep metadata about which exchanges happened, but remove actual tokens
+            sanitized["token_exchanges"] = {
+                k: "[REDACTED]" for k in sanitized["token_exchanges"].keys()
+            }
+        
+        # Remove any other fields that might contain tokens or sensitive data
+        # Keep only: status, summary, workflow_type, completed_tasks, recommendations, etc.
+        safe_fields = {
+            "status", "summary", "workflow_type", "completed_tasks", 
+            "recommendations", "audit_trail", "next_steps", "hr_actions",
+            "finance_actions", "legal_actions", "error"
+        }
+        
+        # Only keep safe fields, remove everything else
+        filtered = {k: v for k, v in sanitized.items() if k in safe_fields}
+        
+        # Special handling for audit_trail - remove any token references
+        if "audit_trail" in filtered and isinstance(filtered["audit_trail"], dict):
+            audit = filtered["audit_trail"].copy()
+            for key in ["token", "access_token", "token_id", "auth_token"]:
+                audit.pop(key, None)
+            filtered["audit_trail"] = audit
+        
+        logger.debug("🔒 Sanitized agent result: removed tokens and sensitive data")
+        return filtered
+    
     async def _coordination_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Coordination node - coordinates results from all agents"""
         try:
@@ -293,13 +546,18 @@ class OrchestratorAgent:
             
             logger.info("Coordinating results from all agents")
             
+            # Sanitize agent results before sending to LLM (security)
+            safe_hr_result = self._sanitize_agent_result(hr_result)
+            safe_finance_result = self._sanitize_agent_result(finance_result)
+            safe_legal_result = self._sanitize_agent_result(legal_result)
+            
             # Analyze results and determine next steps
             coordination_prompt = f"""
             Coordinate the results from all agents:
             
-            HR Agent Result: {json.dumps(hr_result, indent=2) if hr_result else "No result"}
-            Finance Agent Result: {json.dumps(finance_result, indent=2) if finance_result else "No result"}
-            Legal Agent Result: {json.dumps(legal_result, indent=2) if legal_result else "No result"}
+            HR Agent Result: {json.dumps(safe_hr_result, indent=2) if safe_hr_result else "No result"}
+            Finance Agent Result: {json.dumps(safe_finance_result, indent=2) if safe_finance_result else "No result"}
+            Legal Agent Result: {json.dumps(safe_legal_result, indent=2) if safe_legal_result else "No result"}
             
             Determine if the workflow can proceed or if additional steps are needed.
             Provide a summary of the coordination results.
@@ -332,18 +590,28 @@ class OrchestratorAgent:
             
             logger.info("Finalizing workflow results")
             
-            # Create final result
+            # Sanitize agent results before including in final result (security)
+            safe_hr_result = self._sanitize_agent_result(hr_result)
+            safe_finance_result = self._sanitize_agent_result(finance_result)
+            safe_legal_result = self._sanitize_agent_result(legal_result)
+            
+            # Create final result (handle None results safely)
             final_result = {
                 "workflow_type": workflow_type,
                 "status": "completed",
                 "timestamp": datetime.now().isoformat(),
                 "agent_results": {
-                    "hr": hr_result,
-                    "finance": finance_result,
-                    "legal": legal_result
+                    "hr": safe_hr_result,
+                    "finance": safe_finance_result,
+                    "legal": safe_legal_result
                 },
-                "summary": f"Workflow {workflow_type} completed successfully with coordination from HR, Finance, and Legal agents.",
-                "response": self._generate_final_response(workflow_type, hr_result, finance_result, legal_result)
+                "summary": f"Workflow {workflow_type} completed successfully.",
+                "response": self._generate_final_response(
+                    workflow_type, 
+                    safe_hr_result, 
+                    safe_finance_result, 
+                    safe_legal_result
+                )
             }
             
             state["final_result"] = final_result

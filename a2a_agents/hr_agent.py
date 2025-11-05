@@ -1,10 +1,14 @@
 import logging
+import os
+import hashlib
+import asyncio
 from typing import Dict, Any, Optional
 from datetime import datetime
 import json
 
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from auth.okta_scopes import OKTA_SCOPES, get_cross_agent_scope
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +18,13 @@ class HRAgent:
     Handles token exchange with other agents and HR-specific tasks
     """
     
-    def __init__(self):
+    def __init__(self, okta_auth=None):
         self.llm = ChatOpenAI(
             model="gpt-4",
             temperature=0.3,
             max_tokens=1000
         )
+        self.okta_auth = okta_auth
         
         self.system_prompt = """
 You are the HR A2A Agent for Streamward Corporation. Your responsibilities include:
@@ -256,16 +261,49 @@ Always maintain professional communication and provide detailed summaries of you
                 "error": str(e)
             }
 
+    def _sanitize_user_info_for_llm(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize user_info with privacy controls (same as orchestrator).
+        Privacy Levels (ALLOW_PII_IN_LLM_PROMPTS env var):
+        - False (default): Anonymous user ID only (maximum privacy)
+        - True: Email + name (enhanced UX, requires consent)
+        """
+        minimal = {}
+        
+        # Privacy setting: Check if PII is allowed
+        allow_pii = os.getenv("ALLOW_PII_IN_LLM_PROMPTS", "false").lower() == "true"
+        
+        if allow_pii:
+            # Privacy Level 3: Include email/name
+            if user_info.get("email"):
+                minimal["email"] = user_info["email"]
+            if user_info.get("name"):
+                minimal["name"] = user_info["name"]
+            logger.debug("⚠️ Privacy Level 3: Sending email/name to LLM (PII exposure)")
+        else:
+            # Privacy Level 1: Anonymous ID only
+            email = user_info.get("email", "anonymous")
+            salt = os.getenv("ANONYMOUS_ID_SALT", "streamward-privacy-salt")
+            anonymous_id = hashlib.sha256(f"{email}{salt}".encode()).hexdigest()[:16]
+            minimal["user_id"] = f"user_{anonymous_id}"
+            logger.debug("🔒 Privacy Level 1: Using anonymous user ID (no PII exposure)")
+        
+        logger.debug("🔒 Sanitized user_info for LLM: removed token, claims, and PII")
+        return minimal
+    
     async def _handle_general_hr_task(self, workflow_type: str, parameters: Dict[str, Any], user_info: Dict[str, Any], token: str) -> Dict[str, Any]:
         """Handle general HR tasks"""
         try:
+            # Sanitize user_info before sending to LLM (security)
+            safe_user_info = self._sanitize_user_info_for_llm(user_info)
+            
             # Use LLM to process general HR requests
             prompt = f"""
             Process this HR workflow task:
             
             Workflow Type: {workflow_type}
             Parameters: {json.dumps(parameters, indent=2)}
-            User Info: {json.dumps(user_info, indent=2)}
+            User Info: {json.dumps(safe_user_info, indent=2)}
             
             Provide a summary of HR actions taken and recommendations.
             """
@@ -293,27 +331,64 @@ Always maintain professional communication and provide detailed summaries of you
             }
 
     async def _exchange_token_with_finance(self, current_token: str, purpose: str) -> str:
-        """Exchange token with Finance agent"""
-        # Simulate token exchange
-        return f"hr-to-finance-token-{purpose}-{datetime.now().timestamp()}"
+        """Exchange token with Finance agent using RFC 8693 Token Exchange"""
+        if self.okta_auth:
+            try:
+                # Exchange to Finance server - must request Finance scopes (not HR scopes!)
+                # Finance server only has Finance scopes
+                exchanged_token = await self.okta_auth.exchange_token(
+                    token=current_token,
+                    target_audience=self.okta_auth.finance_audience,
+                    scope=get_cross_agent_scope("hr", "finance"),  # Finance server scope
+                    source_agent="hr"  # Use HR service app credentials
+                )
+                logger.info(f"HR Agent exchanged token with Finance agent for: {purpose}")
+                return exchanged_token
+            except Exception as e:
+                logger.error(f"Token exchange with Finance agent failed: {e}")
+                # Fallback to simulated token for demo purposes
+                return f"hr-to-finance-token-{purpose}-{datetime.now().timestamp()}"
+        else:
+            # Fallback to simulated token if okta_auth not available
+            logger.warning("OktaAuth not available, using simulated token exchange")
+            return f"hr-to-finance-token-{purpose}-{datetime.now().timestamp()}"
 
     async def _exchange_token_with_legal(self, current_token: str, purpose: str) -> str:
-        """Exchange token with Legal agent"""
-        # Simulate token exchange
-        return f"hr-to-legal-token-{purpose}-{datetime.now().timestamp()}"
+        """Exchange token with Legal agent using RFC 8693 Token Exchange"""
+        if self.okta_auth:
+            try:
+                # Exchange to Legal server - must request Legal scopes (not HR scopes!)
+                # Legal server only has Legal scopes
+                exchanged_token = await self.okta_auth.exchange_token(
+                    token=current_token,
+                    target_audience=self.okta_auth.legal_audience,
+                    scope=get_cross_agent_scope("hr", "legal"),  # Legal server scope
+                    source_agent="hr"  # Use HR service app credentials
+                )
+                logger.info(f"HR Agent exchanged token with Legal agent for: {purpose}")
+                return exchanged_token
+            except Exception as e:
+                logger.error(f"Token exchange with Legal agent failed: {e}")
+                # Fallback to simulated token for demo purposes
+                return f"hr-to-legal-token-{purpose}-{datetime.now().timestamp()}"
+        else:
+            # Fallback to simulated token if okta_auth not available
+            logger.warning("OktaAuth not available, using simulated token exchange")
+            return f"hr-to-legal-token-{purpose}-{datetime.now().timestamp()}"
 
     def _get_employee_info(self, employee_id: str) -> Optional[Dict[str, Any]]:
         """Get employee information"""
         return self.employee_records.get(employee_id)
 
     async def receive_token_from_agent(self, from_agent: str, token: str, purpose: str) -> Dict[str, Any]:
-        """Receive token from another agent"""
+        """Receive token from another agent (internal use - token not returned for security)"""
         logger.info(f"HR Agent received token from {from_agent} for {purpose}")
         
+        # Security: Don't return actual token in response - it's used internally only
         return {
             "status": "received",
             "from_agent": from_agent,
             "purpose": purpose,
-            "token": token,
+            # Token removed - used internally, not returned
             "processed_at": datetime.now().isoformat()
         }
