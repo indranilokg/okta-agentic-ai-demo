@@ -163,7 +163,7 @@ class OktaAuth:
             }
             
         except Exception as e:
-            logger.error(f"Token validation failed: {e}")
+            logger.error(f"[TOKEN_VALIDATION] FAILED: {str(e)}", exc_info=True)
             raise ValueError(f"Invalid token: {str(e)}")
 
     async def _get_jwks(self) -> Dict[str, Any]:
@@ -310,18 +310,12 @@ class OktaAuth:
             ```
         """
         try:
-            logger.info(f"🔄 [Token Exchange] Starting token exchange")
-            logger.info(f"   📍 Target Audience: {target_audience}")
-            logger.info(f"   🎯 Scope: {scope}")
-            logger.info(f"   🔐 Source Agent: {source_agent or 'Chat Assistant (user-to-agent)'}")
-            logger.info(f"   📝 Subject Token: {token}")
+            logger.info(f"[TOKEN_EXCHANGE] Starting: audience={target_audience}, scope={scope}, source_agent={source_agent or 'user-to-agent'}")
             
             # Determine which authorization server to use based on target audience
             authorization_server_id = self.audience_to_server_map.get(target_audience)
             if not authorization_server_id:
                 raise ValueError(f"No authorization server mapped for audience: {target_audience}")
-            
-            logger.info(f"   🏢 Authorization Server: {authorization_server_id}")
             
             # Determine which service app credentials to use based on source agent
             if source_agent:
@@ -344,17 +338,17 @@ class OktaAuth:
                     service_creds = agent_cred_map[source_agent.lower()]
                     client_id = service_creds["client_id"]
                     client_secret = service_creds["client_secret"]
-                    logger.info(f"Using {source_agent} service app credentials for cross-agent exchange")
+                    logger.info(f"[TOKEN_EXCHANGE] Using {source_agent} service app credentials")
                 else:
                     # Fallback to Chat Assistant if invalid source_agent
                     client_id = self.client_id
                     client_secret = self.client_secret
-                    logger.warning(f"Unknown source_agent '{source_agent}', using Chat Assistant credentials")
+                    logger.warning(f"[TOKEN_EXCHANGE] Unknown source_agent '{source_agent}', using Chat Assistant credentials")
             else:
                 # User-to-agent exchange - use Chat Assistant credentials (default)
                 client_id = self.client_id
                 client_secret = self.client_secret
-                logger.info(f"Using Chat Assistant credentials for user-to-agent exchange")
+                logger.info(f"[TOKEN_EXCHANGE] Using Chat Assistant credentials for user-to-agent exchange")
             
             # Get SDK instance for this authorization server
             sdk = self._get_sdk_for_server(authorization_server_id, client_id, client_secret)
@@ -370,21 +364,19 @@ class OktaAuth:
                 scope=scope
             )
             
-            logger.info(f"   🌐 Token Exchange Endpoint: {self.okta_domain}/oauth2/{authorization_server_id}/v1/token")
+            logger.info(f"[TOKEN_EXCHANGE] Calling {self.okta_domain}/oauth2/{authorization_server_id}/v1/token")
             
             # Perform token exchange using the appropriate SDK
             exchange_response = sdk.token_exchange.exchange_token(exchange_request)
             
-            logger.info(f"✅ [Token Exchange] SUCCESS!")
-            logger.info(f"   🎯 Issued Token Type: {exchange_response.issued_token_type}")
-            logger.info(f"   ⏰ Expires In: {exchange_response.expires_in} seconds")
-            logger.info(f"   📝 Exchanged Token: {exchange_response.access_token}")
-            logger.info(f"   ✅ Token exchange completed for audience: {target_audience}")
+            logger.info(f"[TOKEN_EXCHANGE] SUCCESS: type={exchange_response.issued_token_type}, expires={exchange_response.expires_in}s")
+            logger.debug(f"[TOKEN_EXCHANGE] Generated token (first 50 chars): {exchange_response.access_token[:50]}...")
+            logger.debug(f"[TOKEN_EXCHANGE] Full token: {exchange_response.access_token}")
             
             return exchange_response.access_token
             
         except Exception as e:
-            logger.error(f"Error exchanging token: {e}")
+            logger.error(f"[TOKEN_EXCHANGE] FAILED: audience={target_audience}, error={str(e)}", exc_info=True)
             raise ValueError(f"Token exchange failed: {str(e)}")
     
     def verify_token(self, token: str, issuer: Optional[str] = None, audience: Optional[str] = None) -> Dict[str, Any]:

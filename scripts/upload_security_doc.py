@@ -28,8 +28,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+# Real user email (for document owner and FGA relations)
+TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "indranil.jha@okta.com")
+# Test token that uses TEST_USER_EMAIL from environment
 TEST_TOKEN = "test-token-demo-user"
-TEST_USER_EMAIL = "indranil.jha@okta.com"
 
 # Sample security document content
 SECURITY_DOCUMENT = {
@@ -102,14 +104,19 @@ async def upload_security_document():
     print("Uploading Security Document for RAG Testing")
     print("=" * 70)
     print()
+    print(f"✅ Using TEST_USER_EMAIL: {TEST_USER_EMAIL}")
+    print()
     
     uploaded_doc_id = None
+    doc_owner_email = None
     
     try:
         # Step 1: Upload the document
         print("📄 Step 1: Uploading security document...")
         print(f"   Title: {SECURITY_DOCUMENT['title']}")
         print(f"   Content length: {len(SECURITY_DOCUMENT['content'])} characters")
+        print(f"   Document owner will be: {TEST_USER_EMAIL}")
+        print()
         
         async with httpx.AsyncClient() as client:
             upload_response = await client.post(
@@ -128,36 +135,38 @@ async def upload_security_document():
             
             upload_result = upload_response.json()
             uploaded_doc_id = upload_result["document_id"]
+            doc_owner_email = upload_result["owner_email"]
             
             print(f"✅ Document uploaded successfully!")
             print(f"   Document ID: {uploaded_doc_id}")
             print(f"   Title: {upload_result['title']}")
-            print(f"   Owner: {upload_result['owner_email']}")
+            print(f"   Owner: {doc_owner_email}")
             print()
         
-        # Step 2: Add FGA relations for your email (document owner is demo@streamward.com due to test token)
-        print("🔗 Step 2: Adding FGA relations for your email...")
+        # Step 2: Add FGA relations for the document owner
+        print("🔗 Step 2: Adding FGA relations...")
+        print(f"   Document owner: {doc_owner_email}")
         
         from auth.fga_manager import authorization_manager
         authorization_manager._connect()
         
         if authorization_manager.is_connected():
-            print(f"   Adding relations for: {TEST_USER_EMAIL}")
+            print(f"   Adding relations for: {doc_owner_email}")
             
-            # Add owner relation for your email
+            # Add owner relation
             print(f"   Adding owner relation...")
             owner_success = await authorization_manager.add_relation(
-                TEST_USER_EMAIL, uploaded_doc_id, "owner"
+                doc_owner_email, uploaded_doc_id, "owner"
             )
             if owner_success:
                 print(f"   ✅ Owner relation added")
             else:
                 print(f"   ❌ Failed to add owner relation")
             
-            # Add viewer relation for your email
+            # Add viewer relation
             print(f"   Adding viewer relation...")
             viewer_success = await authorization_manager.add_relation(
-                TEST_USER_EMAIL, uploaded_doc_id, "viewer"
+                doc_owner_email, uploaded_doc_id, "viewer"
             )
             if viewer_success:
                 print(f"   ✅ Viewer relation added")
@@ -167,17 +176,17 @@ async def upload_security_document():
             # Verify permissions
             print(f"   Verifying permissions...")
             owner_permission = await authorization_manager.check_permission(
-                TEST_USER_EMAIL, uploaded_doc_id, "owner"
+                doc_owner_email, uploaded_doc_id, "owner"
             )
             viewer_permission = await authorization_manager.check_permission(
-                TEST_USER_EMAIL, uploaded_doc_id, "viewer"
+                doc_owner_email, uploaded_doc_id, "viewer"
             )
             
             print(f"   Owner permission: {'✅' if owner_permission else '❌'}")
             print(f"   Viewer permission: {'✅' if viewer_permission else '❌'}")
             
             if owner_permission and viewer_permission:
-                print(f"✅ FGA relations for {TEST_USER_EMAIL} verified successfully!")
+                print(f"✅ FGA relations verified successfully!")
             else:
                 print(f"⚠️ Some FGA relations may need manual setup")
         else:
@@ -212,12 +221,8 @@ async def upload_security_document():
         print("=" * 70)
         print(f"📄 Document ID: {uploaded_doc_id}")
         print(f"📋 Title: {SECURITY_DOCUMENT['title']}")
-        print(f"👤 Document Owner (via API): demo@streamward.com")
-        print(f"🔐 FGA Access Added For: {TEST_USER_EMAIL}")
-        print()
-        print("📝 Note: Document owner shows as demo@streamward.com because the")
-        print("   test token is used, but FGA relations were added for your email.")
-        print("   You should have access when using the chat UI with your Okta token.")
+        print(f"👤 Document Owner: {doc_owner_email}")
+        print(f"🔐 FGA Relations: ADDED")
         print()
         print("🧪 Testing Instructions:")
         print(f"   1. In chat UI (logged in with your Okta account), ask:")
@@ -231,12 +236,27 @@ async def upload_security_document():
         print(f"   3. Document ID for reference: {uploaded_doc_id}")
         print("=" * 70)
         
+        # Clean up FGA connections
+        try:
+            from auth.fga_manager import authorization_manager
+            await authorization_manager.close()
+        except Exception as cleanup_error:
+            logger.debug(f"[Cleanup] FGA close error: {cleanup_error}")
+        
         return uploaded_doc_id
         
     except Exception as e:
         print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Clean up FGA connections even on error
+        try:
+            from auth.fga_manager import authorization_manager
+            await authorization_manager.close()
+        except Exception as cleanup_error:
+            logger.debug(f"[Cleanup] FGA close error: {cleanup_error}")
+        
         return None
 
 if __name__ == "__main__":

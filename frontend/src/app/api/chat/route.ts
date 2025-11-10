@@ -5,19 +5,13 @@ import { authOptions } from '@/lib/auth';
 export async function POST(request: Request) {
   try {
     const { messages, sessionId } = await request.json();
-    console.log('Received chat messages:', messages);
 
     // Get the current session to access the tokens
     const session = await getServerSession(authOptions);
-    // Org access token NOT stored in session (not needed, reduces cookie size)
-    const customAccessToken = session?.customAccessToken; // Custom server token (for token exchange)
+    const idToken = session?.idToken;
+    const customAccessToken = session?.customAccessToken;
     
-    console.log('📨 [Chat API] Session tokens:');
-    console.log('  - Session user:', session?.user?.email);
-    console.log('  - Custom Access Token (first 50 chars):', customAccessToken ? `${customAccessToken.substring(0, 50)}...` : 'NOT AVAILABLE');
-    console.log('  - Has custom access token:', !!customAccessToken);
-    console.log('  - Org Access Token NOT in session (not needed)');
-    console.log('  - Full Custom Access Token:', customAccessToken);
+    console.debug(`[CHAT_API] Request: user=${session?.user?.email}, has_idToken=${!!idToken}, has_customAccessToken=${!!customAccessToken}`);
 
     // Forward to FastAPI backend
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -26,16 +20,14 @@ export async function POST(request: Request) {
       'Content-Type': 'application/json',
     };
     
-    // No Authorization header with org token (org access token not available)
-    // Backend will use custom access token for token exchange instead
-    console.log('📤 Forwarding request without org access token (not stored to reduce cookie size)');
+    // Add ID token header for ID-JAG token exchange (MCP flows)
+    if (idToken) {
+      headers['X-ID-Token'] = idToken;
+    }
     
-    // Add custom server token header for token exchange (new)
+    // Add custom server token header for token exchange
     if (customAccessToken) {
       headers['X-Custom-Access-Token'] = customAccessToken;
-      console.log('✅ Forwarding custom server token for token exchange');
-    } else {
-      console.log('⚠️ No custom access token available');
     }
     
     const response = await fetch(`${backendUrl}/api/chat`, {
@@ -48,15 +40,17 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
+      console.error(`[CHAT_API] Backend error: status=${response.status}`);
       throw new Error(`Backend responded with status: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('Backend response:', data);
+    console.debug(`[CHAT_API] Response: agent_type=${data.agentType}, has_agent_flow=${Array.isArray(data.agent_flow)}, has_mcp_info=${!!data.mcp_info}, used_rag=${data.used_rag}`);
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error forwarding to backend:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[CHAT_API] Error: ${errorMessage}`);
     
     // Fallback response if backend is not available
     const fallbackResponse = {

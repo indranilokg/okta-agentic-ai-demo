@@ -34,15 +34,19 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)  # Suppress OpenAI DEBUG logs (e.g., "DEBUG:openai._base_client")
 logging.getLogger("openai._base_client").setLevel(logging.WARNING)
 logging.getLogger("langchain_openai").setLevel(logging.WARNING)  # Suppress LangChain OpenAI DEBUG logs
+logging.getLogger("okta_ai_sdk").setLevel(logging.WARNING)  # Suppress Okta AI SDK verbose output (emojis in verification steps)
+logging.getLogger("okta_ai_sdk.cross_app_access").setLevel(logging.WARNING)
 
-# Keep important loggers at INFO level for token exchange visibility
-# These logs clearly show the token exchange flow:
-logging.getLogger("auth.okta_auth").setLevel(logging.INFO)  # Token exchange logs (🔄 [Token Exchange])
-logging.getLogger("auth.okta_validator").setLevel(logging.INFO)  # Token validation logs
-logging.getLogger("orchestrator_agent").setLevel(logging.INFO)  # Orchestrator workflow logs
-logging.getLogger("a2a_agents").setLevel(logging.INFO)  # Agent processing logs
-logging.getLogger("chat_assistant").setLevel(logging.INFO)  # Chat assistant logs
-logging.getLogger("api.main").setLevel(logging.INFO)  # API endpoint logs
+# Keep important loggers at DEBUG level for full token visibility and flow details
+# DEBUG logs will show full tokens (first 50 chars + full token for sensitive data)
+logging.getLogger("auth.okta_auth").setLevel(logging.DEBUG)  # Token exchange with full tokens
+logging.getLogger("auth.okta_validator").setLevel(logging.DEBUG)  # Token validation with full tokens
+logging.getLogger("auth.okta_cross_app_access").setLevel(logging.DEBUG)  # ID-JAG exchange with full tokens
+logging.getLogger("orchestrator_agent").setLevel(logging.DEBUG)  # Orchestrator workflow logs
+logging.getLogger("a2a_agents").setLevel(logging.DEBUG)  # Agent processing logs
+logging.getLogger("chat_assistant").setLevel(logging.DEBUG)  # Chat assistant with full MCP tokens
+logging.getLogger("api.main").setLevel(logging.DEBUG)  # API endpoint logs
+logging.getLogger("mcp_servers").setLevel(logging.DEBUG)  # MCP server logs
 
 app = FastAPI(
     title="Streamward AI Assistant API",
@@ -92,6 +96,8 @@ class ChatMessage(BaseModel):
     message: str
     user_id: Optional[str] = None
     session_id: Optional[str] = None
+    id_token: Optional[str] = None  # For ID-JAG token exchange
+    access_token: Optional[str] = None  # For resource access
 
 class ChatMessageList(BaseModel):
     messages: List[Dict[str, Any]]
@@ -133,6 +139,7 @@ class SimpleChatResponse(BaseModel):
     agent_flow: Optional[List[Dict[str, Any]]] = None
     token_exchanges: Optional[List[Dict[str, Any]]] = None
     source_user_token: Optional[str] = None  # Original user token that initiated the workflow
+    mcp_info: Optional[Dict[str, Any]] = None  # MCP server info and tools called
 
 class WorkflowRequest(BaseModel):
     workflow_type: str
@@ -172,14 +179,22 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         # Get session ID from request or use default
         session_id = request.session_id or 'test-session'
         
-        logger.info(f"Chat message: {user_message} (session: {session_id})")
+        logger.debug(f"[API] Chat: msg={user_message[:50]}..., session={session_id}")
         
-        # Extract custom access token from X-Custom-Access-Token header (for token exchange)
-        custom_access_token = http_request.headers.get('X-Custom-Access-Token')
+        # Extract tokens from headers
+        # Support both header formats and body parameters for flexibility
+        custom_id_token = http_request.headers.get('X-ID-Token') or last_message.get('id_token')
+        custom_access_token = http_request.headers.get('X-Custom-Access-Token') or http_request.headers.get('X-Access-Token') or last_message.get('access_token')
+        
+        logger.debug(f"[API] Tokens: has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
+        
+        # Log full tokens at DEBUG level for troubleshooting
+        if custom_id_token:
+            logger.debug(f"[API] ID Token (first 50): {custom_id_token[:50]}...")
+            logger.debug(f"[API] Full ID Token: {custom_id_token}")
         if custom_access_token:
-            logger.info(f"✅ Received custom access token: {custom_access_token}")
-        else:
-            logger.warning("⚠️ No custom access token in X-Custom-Access-Token header")
+            logger.debug(f"[API] Access Token (first 50): {custom_access_token[:50]}...")
+            logger.debug(f"[API] Full Access Token: {custom_access_token}")
         
         # Build user_info - prioritize in this order:
         # 1. User from Authorization header (if provided)
@@ -189,39 +204,38 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         
         if current_user:
             # User authenticated via Authorization header
-            logger.info(f"✅ Authenticated user from Authorization header: {current_user.get('email')}")
+            logger.debug(f"[API] User: authenticated via header={current_user.get('email')}")
             user_info = current_user.copy()
         elif custom_access_token:
             # Validate custom access token and extract user info
-            logger.info("🔍 Validating custom access token to extract user info...")
             try:
                 from auth.okta_validator import token_validator
                 validated_user = await token_validator.validate_token(custom_access_token)
                 if validated_user:
-                    logger.info(f"✅ Validated user from custom access token: {validated_user.get('email')}")
+                    logger.debug(f"[API] User: validated from token={validated_user.get('email')}")
                     user_info = validated_user
                 else:
-                    logger.warning("⚠️ Custom access token validation returned None")
+                    logger.warning("[API] Custom access token validation failed")
             except Exception as e:
-                logger.error(f"⚠️ Error validating custom access token: {e}")
+                logger.warning(f"[API] Token validation error: {str(e)}")
         
         if not user_info:
             # Fallback to demo user
-            logger.warning("⚠️ No authenticated user - using demo user")
+            logger.debug("[API] Using demo user")
             user_info = {
                 "sub": "demo-user",
                 "email": "demo@streamward.com",
                 "name": "Demo User"
             }
         
-        # Always add custom access token to user_info for token exchange (if available)
+        # Add tokens to user_info
+        if custom_id_token:
+            user_info["id_token"] = custom_id_token
+        
         if custom_access_token:
             user_info["token"] = custom_access_token
-            logger.info("✅ Custom access token added to user_info for token exchange")
         
-        logger.info(f"Using user: {user_info['email']}")
-        logger.info(f"User details: sub={user_info.get('sub')}, name={user_info.get('name')}, email={user_info.get('email')}")
-        logger.info(f"Has token for exchange: {'Yes' if user_info.get('token') else 'No'}")
+        logger.info(f"[API] User_session: email={user_info['email']}, has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
         
         # Process message through Streamward Assistant (with memory management)
         response = await streamward_assistant.process_message(
@@ -229,11 +243,6 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
             user_info,
             session_id
         )
-        
-        # Log agent flow data for debugging
-        if response.get("agent_flow"):
-            logger.info(f"📊 [API] Agent flow data: {len(response.get('agent_flow', []))} steps")
-            logger.info(f"📊 [API] Token exchanges: {len(response.get('token_exchanges', []))} exchanges")
         
         response_data = SimpleChatResponse(
             content=response["content"],
@@ -243,11 +252,12 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
             workflow_info=response.get("workflow_info"),
             agent_flow=response.get("agent_flow"),
             token_exchanges=response.get("token_exchanges"),
-            source_user_token=response.get("source_user_token")
+            source_user_token=response.get("source_user_token"),
+            mcp_info=response.get("mcp_info")
         )
         
-        # Log what we're returning
-        logger.info(f"📤 [API] Returning response with agent_flow: {bool(response_data.agent_flow)}, token_exchanges: {bool(response_data.token_exchanges)}")
+        # Log response details
+        logger.debug(f"[API] Response: agent_type={response['agent_type']}, has_agent_flow={bool(response_data.agent_flow)}, has_token_exchanges={bool(response_data.token_exchanges)}, has_mcp_info={bool(response_data.mcp_info)}, used_rag={response_data.used_rag}")
         
         return response_data
         

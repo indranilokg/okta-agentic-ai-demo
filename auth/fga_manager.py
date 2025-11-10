@@ -221,6 +221,19 @@ class AuthorizationManager:
     def is_connected(self) -> bool:
         """Check if FGA client is connected"""
         return self.openfga_client is not None
+    
+    async def close(self):
+        """Properly close the FGA client and clean up resources"""
+        if self.openfga_client:
+            try:
+                # Close the underlying aiohttp session if it exists
+                if hasattr(self.openfga_client, 'close'):
+                    await self.openfga_client.close()
+                logger.debug("[FGA] Client session closed successfully")
+            except Exception as e:
+                logger.debug(f"[FGA] Error closing client: {e}")
+            finally:
+                self.openfga_client = None
 
 # Global instance
 authorization_manager = AuthorizationManager()

@@ -69,7 +69,7 @@ class OrchestratorAgent:
                 minimal["email"] = user_info["email"]
             if user_info.get("name"):
                 minimal["name"] = user_info["name"]
-            logger.info("⚠️ Privacy Level 3: Sending email/name to LLM (PII exposure)")
+            logger.info("[PRIVACY] PII enabled: sending email/name to LLM")
         else:
             # Privacy Level 1: Maximum Privacy - Anonymous ID only
             # Generate consistent anonymous ID from email hash (non-reversible)
@@ -78,11 +78,9 @@ class OrchestratorAgent:
             salt = os.getenv("ANONYMOUS_ID_SALT", "streamward-privacy-salt")
             anonymous_id = hashlib.sha256(f"{email}{salt}".encode()).hexdigest()[:16]
             minimal["user_id"] = f"user_{anonymous_id}"  # e.g., "user_a3f5b2c1d9e8f7a6"
-            logger.debug("🔒 Privacy Level 1: Using anonymous user ID (no PII exposure)")
+            logger.info(f"[PRIVACY] PII disabled: using anonymous user_id={minimal['user_id']}")
         
-        # Don't include: sub, token, claims, groups, given_name, family_name, etc.
-        # These don't help the LLM and expose unnecessary information
-        logger.debug(f"🔒 Created minimal user_info: {list(minimal.keys())} (removed token, claims, and other metadata)")
+        logger.debug(f"[USER_INFO] Sanitized: includes={list(minimal.keys())}")
         
         return minimal
 
@@ -155,7 +153,7 @@ class OrchestratorAgent:
             
             # If employee onboarding and HR is done, continue to Finance
             if ("employee" in workflow_type or "onboard" in workflow_type) and hr_result:
-                logger.info("🔄 Employee onboarding: HR complete, routing to Finance Agent")
+                logger.info("[WORKFLOW_ROUTING] HR complete, routing to Finance Agent")
                 return "finance_agent"
             else:
                 return "coordination"
@@ -177,7 +175,7 @@ class OrchestratorAgent:
             
             # If employee onboarding and Finance is done, continue to Legal
             if ("employee" in workflow_type or "onboard" in workflow_type) and finance_result:
-                logger.info("🔄 Employee onboarding: Finance complete, routing to Legal Agent")
+                logger.info("[WORKFLOW_ROUTING] Finance complete, routing to Legal Agent")
                 return "legal_agent"
             else:
                 return "coordination"
@@ -205,7 +203,7 @@ class OrchestratorAgent:
         try:
             workflow_id = str(uuid.uuid4())
             
-            logger.info(f"Starting workflow {workflow_id} of type {workflow_type}")
+            logger.info(f"[WORKFLOW] Starting {workflow_type} workflow_id={workflow_id}")
             
             # Initialize workflow state
             initial_state = {
@@ -254,7 +252,7 @@ class OrchestratorAgent:
             }
             
         except Exception as e:
-            logger.error(f"Workflow execution error: {e}")
+            logger.error(f"[WORKFLOW] FAILED workflow_id={workflow_id}: {str(e)}", exc_info=True)
             if workflow_id in self.active_workflows:
                 self.active_workflows[workflow_id]["status"] = "failed"
                 self.active_workflows[workflow_id]["error"] = str(e)
@@ -272,7 +270,7 @@ class OrchestratorAgent:
             workflow_type = state["workflow_type"]
             parameters = state["parameters"]
             
-            logger.info(f"Orchestrator analyzing workflow: {workflow_type}")
+            logger.info(f"[ORCHESTRATOR_NODE] Analyzing workflow_type={workflow_type}")
             
             # Analyze workflow requirements
             analysis_prompt = f"""
@@ -303,7 +301,7 @@ class OrchestratorAgent:
             return state
             
         except Exception as e:
-            logger.error(f"Orchestrator node error: {e}")
+            logger.error(f"[ORCHESTRATOR_NODE] ERROR: {str(e)}", exc_info=True)
             state["error"] = str(e)
             return state
 

@@ -38,16 +38,16 @@ export const authOptions = {
           }
         }
         // Do NOT store org access token (not needed)
-        console.log('🔐 [JWT Callback] Org server tokens received:');
-        console.log('  - ID Token (first 50 chars):', account.id_token?.substring(0, 50) + '...');
-        console.log('  - ID Token stored in JWT for frontend display');
-        console.log('  - Org Access Token NOT stored (not needed, reduces cookie size)');
-        console.log('  - Full ID Token:', account.id_token);
+        console.debug(`[JWT] Org ID token stored`);
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`[JWT] ID Token (first 50): ${account.id_token?.substring(0, 50)}...`);
+          console.debug(`[JWT] Full ID Token: ${account.id_token}`);
+        }
       }
       
       // Clear tokens if signOut is triggered
       if (trigger === 'signOut') {
-        console.log('🔐 [JWT Callback] SignOut triggered - clearing all tokens');
+        console.debug('[JWT] SignOut triggered - clearing tokens');
         token.idToken = undefined;
         token.customAccessToken = undefined;
         return token;
@@ -66,32 +66,22 @@ export const authOptions = {
         const customAccessTokenCookie = cookieStore.get('custom-access-token');
         
         if (customAccessTokenCookie?.value) {
-          // Only store access token in JWT to reduce cookie size
           token.customAccessToken = customAccessTokenCookie.value;
-          console.log('🔐 [JWT Callback] Custom server tokens found in cookies:');
-          console.log('  - Custom Access Token (first 50 chars):', customAccessTokenCookie.value.substring(0, 50) + '...');
-          console.log('  - Custom Access Token stored in JWT for token exchange');
-          console.log('  - Custom ID Token NOT stored (not needed, reduces cookie size)');
-          console.log('  - Full Custom Access Token:', customAccessTokenCookie.value);
-        } else {
-          // If cookies are missing but we had tokens before, clear them (logout scenario)
-          if (token.customAccessToken) {
-            console.log('🔐 [JWT Callback] Custom tokens missing from cookies - clearing from JWT (likely logout)');
-            token.customAccessToken = undefined;
-          } else {
-            console.log('🔐 [JWT Callback] No custom server tokens found in cookies');
+          console.debug('[JWT] Custom access token found and stored');
+          if (process.env.NODE_ENV === 'development') {
+            console.debug(`[JWT] Custom token (first 50): ${customAccessTokenCookie.value.substring(0, 50)}...`);
+            console.debug(`[JWT] Full custom token: ${customAccessTokenCookie.value}`);
           }
+        } else if (token.customAccessToken) {
+          // Tokens missing from cookies - likely logout
+          console.debug('[JWT] Custom tokens cleared (logout scenario)');
+          token.customAccessToken = undefined;
         }
       } catch (error) {
         // Cookies might not be available in all contexts, ignore silently
-        console.log('🔐 [JWT Callback] Could not read cookies (normal in some contexts):', error);
       }
       
-      console.log('🔐 [JWT Callback] Current token state:');
-      console.log('  - Has org ID token:', !!token.idToken);
-      console.log('  - Has custom access token:', !!token.customAccessToken);
-      console.log('  - Org access token NOT stored (not needed)');
-      console.log('  - Custom ID token NOT stored (not needed)');
+      console.debug(`[JWT] Token state: has_idToken=${!!token.idToken}, has_customAccessToken=${!!token.customAccessToken}`);
       
       return token;
     },
@@ -102,13 +92,11 @@ export const authOptions = {
       session.idToken = token.idToken;
       session.customAccessToken = token.customAccessToken;
       
-      console.log('👤 [Session Callback] Building session for user:', token.email || token.sub);
-      console.log('  - Org ID Token (first 50 chars):', token.idToken ? token.idToken.substring(0, 50) + '...' : 'NOT AVAILABLE');
-      console.log('  - Custom Access Token (first 50 chars):', token.customAccessToken ? token.customAccessToken.substring(0, 50) + '...' : 'NOT AVAILABLE');
-      console.log('  - Org Access Token NOT in session (not needed)');
-      console.log('  - Custom ID Token NOT in session (not needed)');
-      console.log('  - Full Org ID Token:', token.idToken);
-      console.log('  - Full Custom Access Token:', token.customAccessToken);
+      console.debug(`[SESSION] Built for user: ${token.email}, has_idToken=${!!token.idToken}, has_customAccessToken=${!!token.customAccessToken}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`[SESSION] Full ID token: ${token.idToken}`);
+        console.debug(`[SESSION] Full custom token: ${token.customAccessToken}`);
+      }
       
       session.user = {
         ...session.user,

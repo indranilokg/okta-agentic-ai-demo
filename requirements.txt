@@ -38,4 +38,5 @@ okta-jwt-verifier>=0.2.3
 
 # Okta AI SDK for token exchange, cross-app access, CIBA, and DPOP
 # Installing from Test PyPI - use: pip install --extra-index-url https://test.pypi.org/simple/ okta-ai-sdk-proto
-okta-ai-sdk-proto>=1.0.0a1
+# v1.0.0-alpha.6+: Simplified 4-method API with ID-JAG cross-app access for MCP
+okta-ai-sdk-proto>=1.0.0a6

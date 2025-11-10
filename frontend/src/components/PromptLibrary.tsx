@@ -27,8 +27,8 @@ const promptCategories: PromptCategory[] = [
     prompts: [
       'What are the security policies for data access?',
       'Search for documents about GDPR compliance',
-      'Find information about employee benefits policies',
-      'Tell me about our company compliance requirements',
+      'Search for documents about benefits and compensation policies',
+      'Tell me about our company security and compliance requirements',
       'What documents do we have related to financial regulations?',
       'Show me the security documentation for data handling'
     ]
@@ -49,6 +49,42 @@ const promptCategories: PromptCategory[] = [
       'Can you help me with employee onboarding?',
       'Process a financial transaction for approval',
       'I need to hire a new staff member'
+    ]
+  },
+  {
+    id: 'mcp-employees',
+    name: 'MCP - Employees',
+    description: 'Query employee information, departments, and HR data',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+    prompts: [
+      'List all employees',
+      'Show me information about John Smith',
+      'What are the departments?',
+      'Show me salary band distribution',
+      'Get department information for Engineering'
+    ]
+  },
+  {
+    id: 'mcp-partners',
+    name: 'MCP - Partners',
+    description: 'Query partner information, contracts, and SLA data',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+    prompts: [
+      'List all partners',
+      'Show me information about TechCorp Solutions',
+      'What contracts do we have?',
+      'What are the SLA levels?',
+      'Show me revenue share information',
+      'Get contract details for contract-001',
+      'What partners have Premium SLA?'
     ]
   },
   {
@@ -132,7 +168,13 @@ export default function PromptLibrary({ onSelectPrompt }: PromptLibraryProps) {
                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`${category.id === 'xaa' ? 'text-gray-400' : 'text-indigo-600'}`}>
+                      <div className={`${
+                        category.id === 'xaa' 
+                          ? 'text-gray-400' 
+                          : category.id.startsWith('mcp-')
+                          ? 'text-purple-600'
+                          : 'text-indigo-600'
+                      }`}>
                         {category.icon}
                       </div>
                       <div className="text-left">
@@ -163,6 +205,8 @@ export default function PromptLibrary({ onSelectPrompt }: PromptLibraryProps) {
                           className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
                             category.id === 'xaa'
                               ? 'text-gray-400 cursor-not-allowed'
+                              : category.id.startsWith('mcp-')
+                              ? 'text-gray-700 hover:bg-purple-50 hover:shadow-sm border border-transparent hover:border-purple-200'
                               : 'text-gray-700 hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-200'
                           }`}
                         >

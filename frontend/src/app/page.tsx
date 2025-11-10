@@ -6,6 +6,7 @@ import { checkAndTriggerCustomAuth } from '@/lib/custom-auth';
 import IdTokenCard from '@/components/IdTokenCard';
 import RAGCard from '@/components/RAGCard';
 import AgentFlowCard from '@/components/AgentFlowCard';
+import MCPCard from '@/components/MCPCard';
 import PromptLibrary from '@/components/PromptLibrary';
 
 interface Message {
@@ -19,6 +20,11 @@ interface RAGInfo {
   query: string;
   documents_count: number;
   context_preview: string;
+}
+
+interface MCPInfo {
+  server: string;
+  tools_called: string[];
 }
 
 interface AgentFlowStep {
@@ -51,7 +57,7 @@ export default function StreamwardAssistant() {
     
     // If user is authenticated, clear the logout flag (fresh login)
     if (status === 'authenticated' && session && justLoggedOut) {
-      console.log('✅ [Page] User authenticated - clearing logout flag');
+      console.log('[PAGE] User authenticated - clearing logout flag');
       sessionStorage.removeItem('just-logged-out');
       // Clean up URL if from_logout param is present
       if (fromLogout) {
@@ -59,7 +65,7 @@ export default function StreamwardAssistant() {
         window.history.replaceState({}, '', newUrl);
       }
     } else if (justLoggedOut || fromLogout) {
-      console.log('🚫 [Page] Detected logout state - preventing re-auth');
+      console.log('[PAGE] Logout state detected - preventing re-auth');
       // Set flag if from_logout param is present but flag not set
       if (fromLogout && !justLoggedOut) {
         sessionStorage.setItem('just-logged-out', 'true');
@@ -67,7 +73,7 @@ export default function StreamwardAssistant() {
       // Clear the flag after a shorter delay (user likely already logged back in)
       setTimeout(() => {
         sessionStorage.removeItem('just-logged-out');
-        console.log('✅ [Page] Logout flag cleared');
+        console.log('[PAGE] Logout flag cleared');
       }, 2000); // Reduced from 5s to 2s
     }
   }, [status, session]);
@@ -75,13 +81,9 @@ export default function StreamwardAssistant() {
   // Log tokens on client side
   useEffect(() => {
     if (status === 'authenticated' && session) {
-      console.log('🌐 [Client-Side] Session tokens available:');
-      console.log('  - Org ID Token:', session.idToken ? `${session.idToken.substring(0, 50)}...` : 'NOT AVAILABLE');
-      console.log('  - Custom Access Token:', session.customAccessToken ? `${session.customAccessToken.substring(0, 50)}...` : 'NOT AVAILABLE');
-      console.log('  - Org Access Token NOT in session (not needed)');
-      console.log('  - Custom ID Token NOT in session (not needed)');
-      console.log('  - Full Org ID Token:', session.idToken);
-      console.log('  - Full Custom Access Token:', session.customAccessToken);
+      console.log(`[SESSION] Tokens available: idToken=${!!session.idToken}, customToken=${!!session.customAccessToken}`);
+      console.debug(`[SESSION] Org ID Token (first 50): ${session.idToken?.substring(0, 50) || 'N/A'}`);
+      console.debug(`[SESSION] Custom Access Token (first 50): ${session.customAccessToken?.substring(0, 50) || 'N/A'}`);
     }
   }, [status, session]);
   
@@ -98,11 +100,11 @@ export default function StreamwardAssistant() {
       if (justLoggedOut || fromLogout) {
         if (session.customAccessToken) {
           // User has custom token, so they're properly logged in - clear flag
-          console.log('✅ [Custom Auth] User has custom token - clearing logout flag');
+          console.log('[CUSTOM_AUTH] User has custom token - clearing logout flag');
           sessionStorage.removeItem('just-logged-out');
         } else {
           // No custom token and coming from logout - skip for now
-          console.log('🚫 [Custom Auth] Skipping - user just logged out and no custom token yet');
+          console.log('[CUSTOM_AUTH] Skipping - just logged out, no custom token yet');
           return;
         }
       }
@@ -118,20 +120,16 @@ export default function StreamwardAssistant() {
   const [isTyping, setIsTyping] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [ragInfo, setRagInfo] = useState<RAGInfo | null>(null);
+  const [mcpInfo, setMcpInfo] = useState<MCPInfo | null>(null);
+  const [mcpQuery, setMcpQuery] = useState<string | null>(null);
   const [agentFlow, setAgentFlow] = useState<AgentFlowStep[] | null>(null);
   const [tokenExchanges, setTokenExchanges] = useState<TokenExchange[] | null>(null);
   const [workflowType, setWorkflowType] = useState<string | null>(null);
   const [sourceUserToken, setSourceUserToken] = useState<string | null>(null);
   
-  // Debug: Log agent flow state changes
+  // Log agent flow state changes
   useEffect(() => {
-    console.log('🎯 [Page] Agent Flow State:', {
-      agentFlow,
-      tokenExchanges,
-      workflowType,
-      sourceUserToken: sourceUserToken ? `${sourceUserToken.substring(0, 50)}...` : null,
-      agentFlowLength: agentFlow?.length || 0
-    });
+    console.debug(`[AGENT_FLOW] State: flowLength=${agentFlow?.length || 0}, hasTokenExchanges=${!!tokenExchanges}, workflowType=${workflowType}`);
   }, [agentFlow, tokenExchanges, workflowType, sourceUserToken]);
   const [sessionId, setSessionId] = useState<string>(() => {
     // Generate a session ID that persists across page reloads
@@ -313,30 +311,45 @@ export default function StreamwardAssistant() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    // Clear previous MCP info when starting a new message
+    setMcpInfo(null);
+    setMcpQuery(null);
     setIsTyping(true);
 
     try {
+      // Extract tokens from session for ID-JAG exchange
+      const idToken = session?.idToken;
+      const accessToken = session?.customAccessToken;
+      
+      // Log token availability
+      console.log(`[MESSAGE] Sending tokens: idToken=${!!idToken}, accessToken=${!!accessToken}`);
+      
+      // Prepare message with tokens
+      const messageWithTokens = {
+        ...userMessage,
+        id_token: idToken,
+        access_token: accessToken,
+      };
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // Also send tokens in headers for additional security/flexibility
+          ...(idToken && { 'X-ID-Token': idToken }),
+          ...(accessToken && { 'X-Access-Token': accessToken }),
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage],
+          messages: [...messages, messageWithTokens],
           session_id: sessionId,
         }),
       });
 
       const data = await response.json();
       
-      // Debug: Log the full response
-      console.log('📨 [Frontend] Full backend response:', JSON.stringify(data, null, 2));
-      console.log('📨 [Frontend] agent_flow:', data.agent_flow);
-      console.log('📨 [Frontend] agent_flow type:', typeof data.agent_flow);
-      console.log('📨 [Frontend] agent_flow isArray:', Array.isArray(data.agent_flow));
-      console.log('📨 [Frontend] agent_flow length:', data.agent_flow?.length);
-      console.log('📨 [Frontend] token_exchanges:', data.token_exchanges);
-      console.log('📨 [Frontend] workflow_info:', data.workflow_info);
+      // Log response summary
+      console.log(`[RESPONSE] workflow=${data.workflow_info?.workflow_type}, hasAgentFlow=${Array.isArray(data.agent_flow)}, usedRag=${data.used_rag}, hasMcp=${!!data.mcp_info}`);
+      console.debug(`[RESPONSE] Full response keys: ${Object.keys(data).join(', ')}`);
       
       // Update RAG info if RAG was used
       if (data.used_rag && data.rag_info) {
@@ -350,25 +363,35 @@ export default function StreamwardAssistant() {
         setRagInfo(null);
       }
       
+      // Update MCP info if MCP was used
+      if (data.mcp_info) {
+        setMcpInfo({
+          server: data.mcp_info.server || 'unknown',
+          tools_called: data.mcp_info.tools_called || [],
+          id_jag_token: data.mcp_info.id_jag_token,
+          mcp_access_token: data.mcp_info.mcp_access_token,
+          expires_in: data.mcp_info.expires_in,
+          scope: data.mcp_info.scope
+        });
+        setMcpQuery(userMessage.content);
+      } else {
+        // Clear MCP info if not used
+        setMcpInfo(null);
+        setMcpQuery(null);
+      }
+      
       // Update agent flow info if workflow was executed
-      // Check if agent_flow exists and is a non-empty array
       const hasAgentFlow = data.agent_flow && Array.isArray(data.agent_flow) && data.agent_flow.length > 0;
-      console.log('🔍 [Frontend] hasAgentFlow check:', {
-        exists: !!data.agent_flow,
-        isArray: Array.isArray(data.agent_flow),
-        length: data.agent_flow?.length,
-        hasAgentFlow,
-        fullAgentFlow: data.agent_flow
-      });
+      console.log(`[AGENT_FLOW] Received: count=${data.agent_flow?.length || 0}, hasTokenExchanges=${!!data.token_exchanges}`);
       
       if (hasAgentFlow) {
-        console.log('✅ [Frontend] Setting agent flow data:', data.agent_flow);
+        console.log(`[AGENT_FLOW] Setting flow data with ${data.agent_flow.length} steps`);
         setAgentFlow(data.agent_flow);
         setTokenExchanges(data.token_exchanges || null);
         setWorkflowType(data.workflow_info?.workflow_type || null);
         setSourceUserToken(data.source_user_token || null);
       } else {
-        console.log('⚠️ [Frontend] No agent_flow data in response - clearing card');
+        console.log(`[AGENT_FLOW] No workflow data received - clearing`);
         // Always clear on next prompt (hide card when no workflow data)
         setAgentFlow(null);
         setTokenExchanges(null);
@@ -424,13 +447,13 @@ export default function StreamwardAssistant() {
       
       // IMPORTANT: Get ID token from session BEFORE calling signOut (session will be cleared)
       const idToken = session?.idToken;
-      console.log('🔐 [Logout] ID Token available:', !!idToken);
+      console.log(`[LOGOUT] Starting logout with idToken=${!!idToken}`);
       
       // Clear client-side storage first
       sessionStorage.removeItem('custom-auth-initiated');
       sessionStorage.removeItem('custom-auth-state');
       sessionStorage.removeItem('custom-auth-verifier');
-      console.log('🧹 Cleared sessionStorage');
+      console.debug('[LOGOUT] Cleared sessionStorage');
       
       // Sign out from NextAuth - this clears the session cookie
       // Use redirect: false so we can handle cookie clearing and Okta logout
@@ -448,7 +471,7 @@ export default function StreamwardAssistant() {
       // The just-logged-out flag will persist across redirects
       window.location.href = `/api/auth/signout?redirect_to_okta=true${idTokenParam}`;
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error(`[LOGOUT] ERROR: ${error instanceof Error ? error.message : String(error)}`);
       // Even on error, redirect to home page with logout flag
       sessionStorage.setItem('just-logged-out', 'true');
       window.location.href = '/';
@@ -629,6 +652,7 @@ export default function StreamwardAssistant() {
             <div className="sticky top-6 space-y-4">
               <IdTokenCard idToken={session?.idToken || ''} />
               <RAGCard ragInfo={ragInfo} />
+              <MCPCard mcpInfo={mcpInfo} query={mcpQuery || undefined} />
               {/* Agent Flow Card - Always visible */}
               <AgentFlowCard 
                 agentFlow={agentFlow} 

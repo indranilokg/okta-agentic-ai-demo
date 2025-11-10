@@ -34,14 +34,16 @@ class OktaTokenValidator:
         
         # Special test token for demonstration
         if token == "test-token-demo-user":
-            logger.info("✅ Using test token for demonstration")
+            # Check for custom test email (e.g., for script testing)
+            test_email = os.getenv("TEST_USER_EMAIL", "demo@streamward.com")
+            logger.info(f"✅ Using test token for demonstration (email: {test_email})")
             return {
                 'sub': 'test-user-123',
-                'email': 'demo@streamward.com',
-                'name': 'Demo User',
-                'given_name': 'Demo',
+                'email': test_email,
+                'name': 'Test User',
+                'given_name': 'Test',
                 'family_name': 'User',
-                'groups': ['employees', 'demo-users'],
+                'groups': ['employees', 'test-users'],
                 'claims': {'test': True}
             }
         

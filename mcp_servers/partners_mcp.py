@@ -14,8 +14,78 @@ class PartnersMCP:
     """
     
     def __init__(self):
-        self.auth0 = Auth0Auth()
+        # Try to initialize Auth0, but don't fail if not configured
+        try:
+            self.auth0 = Auth0Auth()
+        except ValueError:
+            logger.warning("Auth0 not configured - PartnersMCP will operate in demo mode only")
+            self.auth0 = None
+        
         self.partners_data = self._initialize_mock_data()
+        self.tools = self._define_tools()
+    
+    def _define_tools(self) -> List[Dict[str, Any]]:
+        """Define available MCP tools for partner management"""
+        return [
+            {
+                "name": "list_partners",
+                "description": "List all partners with their type, SLA level, contract status, and contact information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "status_filter": {
+                            "type": "string",
+                            "enum": ["Active", "Pending", "Inactive", "All"],
+                            "description": "Filter partners by contract status. Default: All",
+                            "default": "All"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "get_partner_info",
+                "description": "Get detailed information about a specific partner by name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "partner_name": {
+                            "type": "string",
+                            "description": "Partner name (e.g., 'TechCorp Solutions', 'FinanceFlow Inc', 'LegalEase Partners')"
+                        }
+                    },
+                    "required": ["partner_name"]
+                }
+            },
+            {
+                "name": "get_contract_info",
+                "description": "Get information about active contracts with partners including value, period, and terms.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "contract_id": {
+                            "type": "string",
+                            "description": "Optional: Specific contract ID. If not provided, returns all contracts."
+                        }
+                    }
+                }
+            },
+            {
+                "name": "get_sla_info",
+                "description": "Get SLA (Service Level Agreement) information grouped by SLA level with definitions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            },
+            {
+                "name": "get_revenue_info",
+                "description": "Get partner revenue share information and financial statistics.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        ]
         
     def _initialize_mock_data(self) -> Dict[str, Any]:
         """Initialize mock partner data"""
@@ -309,3 +379,173 @@ class PartnersMCP:
         partner["updated_at"] = datetime.now().isoformat()
         
         return partner
+    
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """List all available MCP tools"""
+        return self.tools
+    
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any], user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Call an MCP tool by name with arguments"""
+        try:
+            if tool_name == "list_partners":
+                status_filter = arguments.get("status_filter", "All")
+                return await self._tool_list_partners(status_filter, user_info)
+            elif tool_name == "get_partner_info":
+                partner_name = arguments.get("partner_name")
+                if not partner_name:
+                    return {"error": "partner_name is required"}
+                return await self._tool_get_partner_info(partner_name, user_info)
+            elif tool_name == "get_contract_info":
+                contract_id = arguments.get("contract_id")
+                return await self._tool_get_contract_info(contract_id, user_info)
+            elif tool_name == "get_sla_info":
+                return await self._tool_get_sla_info(user_info)
+            elif tool_name == "get_revenue_info":
+                return await self._tool_get_revenue_info(user_info)
+            else:
+                return {"error": f"Unknown tool: {tool_name}"}
+        except Exception as e:
+            logger.error(f"Error calling tool {tool_name}: {e}")
+            return {"error": str(e)}
+    
+    async def _tool_list_partners(self, status_filter: str, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool implementation for list_partners"""
+        partners = self.partners_data["partners"]
+        filtered_partners = []
+        
+        for partner_id, partner in partners.items():
+            if status_filter == "All" or partner['contract_status'] == status_filter:
+                filtered_partners.append({
+                    "id": partner['id'],
+                    "name": partner['name'],
+                    "type": partner['type'],
+                    "sla_level": partner['sla_level'],
+                    "contract_status": partner['contract_status'],
+                    "contact_email": partner['contact_email']
+                })
+        
+        return {
+            "partners": filtered_partners,
+            "total_count": len(filtered_partners),
+            "status_filter": status_filter
+        }
+    
+    async def _tool_get_partner_info(self, partner_name: str, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool implementation for get_partner_info"""
+        partner = self._find_partner_by_name(partner_name)
+        if not partner:
+            return {
+                "error": "partner_not_found",
+                "message": f"Partner '{partner_name}' not found."
+            }
+        
+        return {
+            "partner": {
+                "id": partner['id'],
+                "name": partner['name'],
+                "type": partner['type'],
+                "sla_level": partner['sla_level'],
+                "contract_status": partner['contract_status'],
+                "contact_email": partner['contact_email'],
+                "services": partner['services'],
+                "revenue_share": partner['revenue_share'],
+                "contract_start": partner['contract_start'],
+                "contract_end": partner['contract_end'],
+                "last_activity": partner['last_activity']
+            }
+        }
+    
+    async def _tool_get_contract_info(self, contract_id: Optional[str], user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool implementation for get_contract_info"""
+        contracts = self.partners_data["contracts"]
+        
+        if contract_id:
+            if contract_id in contracts:
+                contract = contracts[contract_id]
+                partner = self.partners_data["partners"][contract["partner_id"]]
+                return {
+                    "contract": {
+                        **contract,
+                        "partner_name": partner['name']
+                    }
+                }
+            else:
+                return {
+                    "error": "contract_not_found",
+                    "message": f"Contract '{contract_id}' not found."
+                }
+        else:
+            contract_list = []
+            for contract_id, contract in contracts.items():
+                partner = self.partners_data["partners"][contract["partner_id"]]
+                contract_list.append({
+                    **contract,
+                    "partner_name": partner['name']
+                })
+            
+            return {
+                "contracts": contract_list,
+                "total_count": len(contract_list)
+            }
+    
+    async def _tool_get_sla_info(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool implementation for get_sla_info"""
+        partners = self.partners_data["partners"]
+        
+        sla_levels = {}
+        for partner in partners.values():
+            level = partner['sla_level']
+            if level not in sla_levels:
+                sla_levels[level] = []
+            sla_levels[level].append(partner['name'])
+        
+        return {
+            "sla_levels": {
+                level: {
+                    "partners": partner_names,
+                    "count": len(partner_names)
+                }
+                for level, partner_names in sla_levels.items()
+            },
+            "sla_definitions": {
+                "Premium": {
+                    "uptime": "99.9%",
+                    "support": "24/7 support",
+                    "response_time": "<1hr response time"
+                },
+                "Standard": {
+                    "uptime": "99.5%",
+                    "support": "Business hours support",
+                    "response_time": "<4hr response time"
+                },
+                "Basic": {
+                    "uptime": "99.0%",
+                    "support": "Business hours support",
+                    "response_time": "<8hr response time"
+                }
+            }
+        }
+    
+    async def _tool_get_revenue_info(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Tool implementation for get_revenue_info"""
+        partners = self.partners_data["partners"]
+        
+        total_revenue_share = sum(partner['revenue_share'] for partner in partners.values())
+        avg_revenue_share = total_revenue_share / len(partners) if partners else 0
+        
+        revenue_data = [
+            {
+                "partner_name": partner['name'],
+                "revenue_share": partner['revenue_share']
+            }
+            for partner in partners.values()
+        ]
+        
+        return {
+            "revenue_data": revenue_data,
+            "summary": {
+                "total_partners": len(partners),
+                "average_revenue_share": round(avg_revenue_share, 1),
+                "total_revenue_share": round(total_revenue_share, 1)
+            }
+        }

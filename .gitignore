@@ -69,6 +69,8 @@ coverage/
 .env.test.local
 .env.production.local
 .env.local
+env.mcpbeta
+env.orig
 
 # Next.js build output
 .next
