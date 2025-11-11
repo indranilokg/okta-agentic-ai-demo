@@ -55,17 +55,17 @@ async function fetchOktaConfig(): Promise<{ mainServerId: string; audience: stri
     const response = await fetch('/api/config/okta');
     if (response.ok) {
       const config = await response.json();
-      console.log('🔧 [Custom Auth] Received config from server:', config);
+      console.log(' [Custom Auth] Received config from server:', config);
       return {
         mainServerId: config.mainServerId || 'default',
         audience: config.audience || 'api://streamward-chat',
         oktaDomain: config.oktaDomain,
       };
     } else {
-      console.warn('⚠️ [Custom Auth] Config API returned error:', response.status, response.statusText);
+      console.warn(' [Custom Auth] Config API returned error:', response.status, response.statusText);
     }
   } catch (error) {
-    console.warn('⚠️ [Custom Auth] Failed to fetch Okta config from server, using defaults:', error);
+    console.warn(' [Custom Auth] Failed to fetch Okta config from server, using defaults:', error);
   }
   
   // Fallback to client-side env variables
@@ -74,7 +74,7 @@ async function fetchOktaConfig(): Promise<{ mainServerId: string; audience: stri
     audience: process.env.NEXT_PUBLIC_OKTA_AUDIENCE || 'api://streamward-chat',
     oktaDomain: process.env.NEXT_PUBLIC_OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL || null,
   };
-  console.log('🔧 [Custom Auth] Using fallback config:', fallbackConfig);
+  console.log(' [Custom Auth] Using fallback config:', fallbackConfig);
   return fallbackConfig;
 }
 
@@ -97,7 +97,7 @@ export async function initiateCustomServerAuth(): Promise<void> {
     return;
   }
   
-  console.log('🔐 [Custom Auth] Using server ID:', mainServerId, 'with audience:', audience);
+  console.log(' [Custom Auth] Using server ID:', mainServerId, 'with audience:', audience);
   
   const customIssuer = `${oktaDomain}/oauth2/${mainServerId}`;
   const { codeVerifier, codeChallenge } = await generatePKCE();

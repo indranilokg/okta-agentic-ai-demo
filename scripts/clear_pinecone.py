@@ -41,29 +41,29 @@ async def clear_all_documents():
         authorization_manager._connect()
         
         if not pinecone_store.index:
-            print("❌ Pinecone not initialized")
+            print(" Pinecone not initialized")
             return
         
         # Get all documents
-        print("📋 Step 1: Getting all documents from Pinecone...")
+        print(" Step 1: Getting all documents from Pinecone...")
         all_docs = await pinecone_store.list_all_documents(k=1000)
         print(f"   Found {len(all_docs)} documents")
         
         if len(all_docs) == 0:
-            print("✅ No documents to delete")
+            print(" No documents to delete")
             return
         
         # Confirm deletion
         print()
-        print(f"⚠️  WARNING: This will delete {len(all_docs)} documents from Pinecone!")
+        print(f"  WARNING: This will delete {len(all_docs)} documents from Pinecone!")
         response = input("Type 'DELETE ALL' to confirm: ")
         
         if response != "DELETE ALL":
-            print("❌ Deletion cancelled")
+            print(" Deletion cancelled")
             return
         
         print()
-        print("🗑️  Step 2: Deleting documents...")
+        print("🗑  Step 2: Deleting documents...")
         
         deleted_count = 0
         failed_count = 0
@@ -85,7 +85,7 @@ async def clear_all_documents():
                         print(f"   Deleted {deleted_count}/{len(all_docs)} documents...")
                 else:
                     failed_count += 1
-                    print(f"   ❌ Failed to delete: {doc_id}")
+                    print(f"    Failed to delete: {doc_id}")
                 
                 # Optionally delete FGA relations (if FGA is connected)
                 if authorization_manager.is_connected():
@@ -116,34 +116,34 @@ async def clear_all_documents():
                         pass
             except Exception as e:
                 failed_count += 1
-                print(f"   ❌ Error deleting {doc_id}: {e}")
+                print(f"    Error deleting {doc_id}: {e}")
         
         print()
         print("=" * 70)
-        print("✅ CLEANUP COMPLETE")
+        print(" CLEANUP COMPLETE")
         print("=" * 70)
-        print(f"📊 Results:")
+        print(f" Results:")
         print(f"   Documents deleted: {deleted_count}")
         print(f"   Failed: {failed_count}")
         print(f"   Total processed: {len(all_docs)}")
         print()
-        print("💡 Note: FGA relations may still exist - delete them manually if needed")
+        print(" Note: FGA relations may still exist - delete them manually if needed")
         print("=" * 70)
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f" Error: {e}")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("🚀 Pinecone Cleanup Script\n")
+    print(" Pinecone Cleanup Script\n")
     
     try:
         asyncio.run(clear_all_documents())
     except KeyboardInterrupt:
-        print("\n\n⚠️ Cleanup interrupted by user")
+        print("\n\n Cleanup interrupted by user")
     except Exception as e:
-        print(f"\n\n❌ Cleanup failed: {e}")
+        print(f"\n\n Cleanup failed: {e}")
         import traceback
         traceback.print_exc()
 

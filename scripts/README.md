@@ -64,7 +64,7 @@ cd scripts && python clear_pinecone.py
 - Attempts to clean up FGA relations
 - Prints summary of deletions
 
-**⚠️ Warning:** This will permanently delete all documents. Use with caution!
+** Warning:** This will permanently delete all documents. Use with caution!
 
 ### `test_token_exchange.py`
 Tests the RFC 8693 Token Exchange functionality using the Okta AI SDK.

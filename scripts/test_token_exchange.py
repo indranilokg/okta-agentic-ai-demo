@@ -59,7 +59,7 @@ async def test_token_verification(okta_auth: OktaAuth, access_token: str):
                         audience=audience
                     )
                     if result.get('valid'):
-                        print(f"✅ Token verification successful!")
+                        print(f" Token verification successful!")
                         print(f"   Subject: {result.get('sub')}")
                         print(f"   Email: {result.get('email')}")
                         print(f"   Audience: {result.get('aud')}")
@@ -73,7 +73,7 @@ async def test_token_verification(okta_auth: OktaAuth, access_token: str):
                 break
         
         if not verified:
-            print(f"❌ Token verification failed with all issuer/audience combinations")
+            print(f" Token verification failed with all issuer/audience combinations")
             print(f"   Tried issuers: {possible_issuers}")
             print(f"   Tried audiences: {possible_audiences}")
             print(f"   Please verify the token was issued by the correct authorization server")
@@ -82,7 +82,7 @@ async def test_token_verification(okta_auth: OktaAuth, access_token: str):
         return True
             
     except Exception as e:
-        print(f"❌ Error during token verification: {e}")
+        print(f" Error during token verification: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -97,7 +97,7 @@ async def test_token_exchange_single(
     expected_scope: Optional[str] = None
 ):
     """Test exchanging token for a single audience"""
-    print(f"\n📋 Testing token exchange for {agent_name}")
+    print(f"\n Testing token exchange for {agent_name}")
     print(f"   Target Audience: {audience}")
     if source_agent:
         print(f"   Source Agent: {source_agent} (cross-agent exchange)")
@@ -124,7 +124,7 @@ async def test_token_exchange_single(
             source_agent=source_agent
         )
         
-        print(f"✅ Token exchange successful!")
+        print(f" Token exchange successful!")
         print(f"   Requested scope: {scope}")
         print(f"   Exchanged token (first 50 chars): {exchanged_token[:50]}...")
         
@@ -142,17 +142,17 @@ async def test_token_exchange_single(
         )
         
         if verify_result.get('valid'):
-            print(f"   ✅ Exchanged token verified!")
+            print(f"    Exchanged token verified!")
             print(f"      Audience: {verify_result.get('aud')}")
             print(f"      Issuer: {verify_result.get('iss')}")
             print(f"      Subject: {verify_result.get('sub')}")
             return exchanged_token
         else:
-            print(f"   ⚠️ Exchanged token verification failed: {verify_result.get('error')}")
+            print(f"    Exchanged token verification failed: {verify_result.get('error')}")
             return exchanged_token
             
     except Exception as e:
-        print(f"❌ Token exchange failed: {e}")
+        print(f" Token exchange failed: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -186,10 +186,10 @@ async def test_token_exchange_chain(okta_auth: OktaAuth, access_token: str):
         if exchanged_token:
             exchanged_tokens[agent_name] = exchanged_token
         else:
-            print(f"⚠️ Failed to exchange token for {agent_name}")
+            print(f" Failed to exchange token for {agent_name}")
             return False
     
-    print(f"\n✅ All token exchanges completed!")
+    print(f"\n All token exchanges completed!")
     print(f"   Exchanged tokens for {len(exchanged_tokens)} agents")
     
     return True
@@ -204,7 +204,7 @@ async def test_cross_agent_exchange(okta_auth: OktaAuth, access_token: str):
     
     try:
         # Step 1: Exchange original user token for Finance agent token
-        print("\n📋 Step 1: Exchange user token for Finance Agent token")
+        print("\n Step 1: Exchange user token for Finance Agent token")
         finance_token = await test_token_exchange_single(
             okta_auth,
             access_token,
@@ -214,12 +214,12 @@ async def test_cross_agent_exchange(okta_auth: OktaAuth, access_token: str):
         )
         
         if not finance_token:
-            print("❌ Failed to get Finance agent token")
+            print(" Failed to get Finance agent token")
             return False
         
         # Step 2: Finance agent exchanges its token for HR agent
         # Finance → HR: Uses Finance service app credentials, requests HR scopes
-        print("\n📋 Step 2: Finance agent exchanges token for HR agent")
+        print("\n Step 2: Finance agent exchanges token for HR agent")
         print("   Using Finance Service App credentials")
         print(f"   Requesting HR server scopes ({OKTA_SCOPES.HR.EMPLOYEES_READ})")
         hr_token = await test_token_exchange_single(
@@ -232,11 +232,11 @@ async def test_cross_agent_exchange(okta_auth: OktaAuth, access_token: str):
         )
         
         if hr_token:
-            print(f"✅ Finance → HR token exchange successful")
+            print(f" Finance → HR token exchange successful")
         
         # Step 3: Finance agent exchanges its token for Legal agent
         # Finance → Legal: Uses Finance service app credentials, requests Legal scopes
-        print("\n📋 Step 3: Finance agent exchanges token for Legal agent")
+        print("\n Step 3: Finance agent exchanges token for Legal agent")
         print("   Using Finance Service App credentials")
         print(f"   Requesting Legal server scopes ({OKTA_SCOPES.LEGAL.COMPLIANCE_VERIFY})")
         legal_token = await test_token_exchange_single(
@@ -249,13 +249,13 @@ async def test_cross_agent_exchange(okta_auth: OktaAuth, access_token: str):
         )
         
         if legal_token:
-            print(f"✅ Finance → Legal token exchange successful")
+            print(f" Finance → Legal token exchange successful")
         
-        print(f"\n✅ Cross-agent token exchange test completed!")
+        print(f"\n Cross-agent token exchange test completed!")
         return True
         
     except Exception as e:
-        print(f"❌ Cross-agent exchange failed: {e}")
+        print(f" Cross-agent exchange failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -268,23 +268,23 @@ async def test_with_different_token_types(okta_auth: OktaAuth, access_token: str
     print("="*60)
     
     # Test 1: Exchange access token (default)
-    print("\n📋 Test 4.1: Exchange Access Token")
+    print("\n Test 4.1: Exchange Access Token")
     try:
         result1 = await okta_auth.exchange_token(
             token=access_token,
             target_audience=okta_auth.hr_audience,
             scope=OKTA_SCOPES.HR.EMPLOYEES_READ  # HR server scope
         )
-        print(f"✅ Access token exchange successful")
+        print(f" Access token exchange successful")
     except Exception as e:
-        print(f"❌ Access token exchange failed: {e}")
+        print(f" Access token exchange failed: {e}")
         import traceback
         traceback.print_exc()
         return False
     
     # Test 2: Exchange ID token (if provided)
     if id_token:
-        print("\n📋 Test 4.2: Exchange ID Token")
+        print("\n Test 4.2: Exchange ID Token")
         try:
             result2 = await okta_auth.exchange_token(
                 token=id_token,
@@ -292,9 +292,9 @@ async def test_with_different_token_types(okta_auth: OktaAuth, access_token: str
                 scope=OKTA_SCOPES.FINANCE.TRANSACTIONS_READ,  # Finance server scope
                 subject_token_type="urn:ietf:params:oauth:token-type:id_token"
             )
-            print(f"✅ ID token exchange successful")
+            print(f" ID token exchange successful")
         except Exception as e:
-            print(f"❌ ID token exchange failed: {e}")
+            print(f" ID token exchange failed: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -312,9 +312,9 @@ async def main():
     env_path = Path(__file__).parent.parent / '.env'
     if env_path.exists():
         load_dotenv(env_path)
-        print(f"\n✅ Loaded environment from: {env_path}")
+        print(f"\n Loaded environment from: {env_path}")
     else:
-        print(f"\n⚠️ No .env file found at {env_path}")
+        print(f"\n No .env file found at {env_path}")
         print("   Please ensure OKTA_DOMAIN, OKTA_CLIENT_ID, and OKTA_CLIENT_SECRET are set")
     
     # Check required environment variables
@@ -337,7 +337,7 @@ async def main():
         missing_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_SECRET (or OKTA_CLIENT_SECRET)")
     
     if missing_vars:
-        print(f"\n❌ Missing required environment variables: {', '.join(missing_vars)}")
+        print(f"\n Missing required environment variables: {', '.join(missing_vars)}")
         print("\nPlease set these in your .env file:")
         print("  OKTA_DOMAIN=your-okta-domain.okta.com")
         print("  OKTA_CHAT_ASSISTANT_CLIENT_ID=your-chat-assistant-service-app-id")
@@ -359,7 +359,7 @@ async def main():
     # Initialize OktaAuth
     try:
         okta_auth = OktaAuth()
-        print(f"\n✅ OktaAuth initialized")
+        print(f"\n OktaAuth initialized")
         print(f"   Domain: {okta_auth.okta_domain}")
         print(f"   Chat Assistant Client ID: {okta_auth.client_id}")
         print(f"   Main Auth Server: {okta_auth.main_server_id}")
@@ -371,15 +371,15 @@ async def main():
         
         # Show service app configuration status
         print(f"\n   Service App Credentials:")
-        print(f"      HR Service App: {'✅ Configured' if okta_auth.hr_service_client_id else '⚠️ Using Chat Assistant'}")
-        print(f"      Finance Service App: {'✅ Configured' if okta_auth.finance_service_client_id else '⚠️ Using Chat Assistant'}")
-        print(f"      Legal Service App: {'✅ Configured' if okta_auth.legal_service_client_id else '⚠️ Using Chat Assistant'}")
+        print(f"      HR Service App: {' Configured' if okta_auth.hr_service_client_id else ' Using Chat Assistant'}")
+        print(f"      Finance Service App: {' Configured' if okta_auth.finance_service_client_id else ' Using Chat Assistant'}")
+        print(f"      Legal Service App: {' Configured' if okta_auth.legal_service_client_id else ' Using Chat Assistant'}")
         if not all([okta_auth.hr_service_client_id, okta_auth.finance_service_client_id, okta_auth.legal_service_client_id]):
-            print(f"\n   ⚠️ Note: Some agent service apps not configured.")
+            print(f"\n    Note: Some agent service apps not configured.")
             print(f"      Cross-agent exchanges will use Chat Assistant credentials as fallback.")
             
     except Exception as e:
-        print(f"\n❌ Failed to initialize OktaAuth: {e}")
+        print(f"\n Failed to initialize OktaAuth: {e}")
         import traceback
         traceback.print_exc()
         return
@@ -402,7 +402,7 @@ async def main():
         if user_token:
             access_token = user_token
         else:
-            print("\n⚠️ Skipping token exchange tests (no token provided)")
+            print("\n Skipping token exchange tests (no token provided)")
             print("   You can test token verification separately if you have a token")
             return
     
@@ -435,7 +435,7 @@ async def main():
     print("="*60)
     
     for test_name, result in results:
-        status = "✅ PASSED" if result else "❌ FAILED"
+        status = " PASSED" if result else " FAILED"
         print(f"{test_name}: {status}")
     
     passed = sum(1 for _, result in results if result)
@@ -445,7 +445,7 @@ async def main():
     if passed == total:
         print("\n🎉 All tests passed!")
     else:
-        print(f"\n⚠️ {total - passed} test(s) failed")
+        print(f"\n {total - passed} test(s) failed")
 
 
 if __name__ == "__main__":

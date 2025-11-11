@@ -36,7 +36,7 @@ class OktaTokenValidator:
         if token == "test-token-demo-user":
             # Check for custom test email (e.g., for script testing)
             test_email = os.getenv("TEST_USER_EMAIL", "demo@streamward.com")
-            logger.info(f"✅ Using test token for demonstration (email: {test_email})")
+            logger.info(f"Using test token for demonstration (email: {test_email})")
             return {
                 'sub': 'test-user-123',
                 'email': test_email,
@@ -77,7 +77,7 @@ class OktaTokenValidator:
                         issuer=actual_issuer,
                         audience=actual_audience
                     )
-                    logger.info(f"✅ Using AccessTokenVerifier with audience: {actual_audience}")
+                    logger.info(f"Using AccessTokenVerifier with audience: {actual_audience}")
                 else:
                     # For other audiences, try IDTokenVerifier
                     # If audience looks like a client ID (0oa...), use it directly
@@ -87,7 +87,7 @@ class OktaTokenValidator:
                         issuer=actual_issuer,
                         client_id=client_id_to_use
                     )
-                    logger.info(f"✅ Using IDTokenVerifier with client_id: {client_id_to_use}")
+                    logger.info(f"Using IDTokenVerifier with client_id: {client_id_to_use}")
                 
                 self.issuer = actual_issuer
             
@@ -144,7 +144,7 @@ class OktaTokenValidator:
                 'claims': jwt_claims
             }
             
-            logger.info(f"✅ Token validated for user: {user_info['email']} (sub: {user_info.get('sub')})")
+            logger.info(f"Token validated for user: {user_info['email']} (sub: {user_info.get('sub')})")
             logger.debug(f"Full user info: {user_info}")
             return user_info
             

@@ -279,7 +279,7 @@ Always maintain professional communication and provide detailed summaries of you
                 minimal["email"] = user_info["email"]
             if user_info.get("name"):
                 minimal["name"] = user_info["name"]
-            logger.debug("⚠️ Privacy Level 3: Sending email/name to LLM (PII exposure)")
+            logger.debug(" Privacy Level 3: Sending email/name to LLM (PII exposure)")
         else:
             # Privacy Level 1: Anonymous ID only
             email = user_info.get("email", "anonymous")

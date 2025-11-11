@@ -12,7 +12,7 @@ export async function GET() {
     const oktaDomain = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL || process.env.NEXT_PUBLIC_OKTA_DOMAIN;
     
     // Log configuration for debugging
-    console.log('🔧 [Config API] Providing Okta configuration:');
+    console.log(' [Config API] Providing Okta configuration:');
     console.log('  - OKTA_MAIN_SERVER_ID env var:', process.env.OKTA_MAIN_SERVER_ID || 'NOT SET (using default)');
     console.log('  - mainServerId:', mainServerId);
     console.log('  - audience:', audience);

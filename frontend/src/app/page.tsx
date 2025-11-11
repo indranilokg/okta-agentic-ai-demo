@@ -635,7 +635,7 @@ export default function StreamwardAssistant() {
                 {/* Quick Actions */}
                 <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
                   <div className="flex items-center space-x-4">
-                    <span>💬 Secure chat</span>
+                    <span> Secure chat</span>
                     <span>🔒 End-to-end encrypted</span>
                   </div>
                   <div className="flex items-center space-x-2">

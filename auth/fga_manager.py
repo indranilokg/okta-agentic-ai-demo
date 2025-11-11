@@ -44,7 +44,7 @@ class AuthorizationManager:
             
             logger.info("Connecting to Auth0 FGA...")
             self.openfga_client = OpenFgaClient(openfga_client_config)
-            logger.info("✅ Connected to Auth0 FGA successfully")
+            logger.info(" Connected to Auth0 FGA successfully")
             
         except Exception as e:
             logger.warning(f"Failed to connect to Auth0 FGA ({e}) - running in demo mode")
@@ -70,7 +70,7 @@ class AuthorizationManager:
                     ]
                 )
             )
-            logger.info(f"✅ Added {relation} relation for user:{user_email} -> doc:{document_id}")
+            logger.info(f" Added {relation} relation for user:{user_email} -> doc:{document_id}")
             return True
         except Exception as e:
             logger.warning(f"FGA relation add failed ({e}) - continuing in demo mode")
@@ -104,7 +104,7 @@ class AuthorizationManager:
                 )
             )
             
-            logger.info(f"✅ Deleted {relation} relation for user:{user_email} -> doc:{document_id}")
+            logger.info(f" Deleted {relation} relation for user:{user_email} -> doc:{document_id}")
             if write_response:
                 logger.debug(f"Write response: {write_response}")
             return True
@@ -116,7 +116,7 @@ class AuthorizationManager:
             
             # Try to extract more details from the exception
             error_type = type(e).__name__
-            logger.error(f"❌ Failed to delete {relation} relation: {error_type}: {e}")
+            logger.error(f" Failed to delete {relation} relation: {error_type}: {e}")
             
             # Check exception attributes for more details
             error_info = {}
@@ -166,11 +166,11 @@ class AuthorizationManager:
                 # 2. A required condition that's met in console but not in SDK
                 # 3. A timing/state issue
                 if "owner" in relation.lower():
-                    logger.warning(f"⚠️ Owner relation deletion failed with ValidationException (400)")
+                    logger.warning(f" Owner relation deletion failed with ValidationException (400)")
                     logger.warning(f"   This may be a constraint in your FGA authorization model")
                     logger.warning(f"   Owner relations may require special conditions to delete")
                     logger.warning(f"   The document is already deleted from Pinecone, so this is non-critical")
-                    logger.info(f"💡 Tip: You can manually delete owner relations in FGA console if needed")
+                    logger.info(f" Tip: You can manually delete owner relations in FGA console if needed")
                     # Return True to avoid blocking cleanup - document already deleted from Pinecone
                     return True
             

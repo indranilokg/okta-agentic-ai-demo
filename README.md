@@ -2,7 +2,7 @@
 
 A comprehensive end-to-end agentic AI demo showcasing advanced security features and multi-agent coordination for Streamward Corporation.
 
-## 🏢 Project Overview
+## Project Overview
 
 Streamward Corporation operates across multiple departments with an intelligent AI assistant that handles:
 - **HR Department**: Employee management, payroll, benefits
@@ -10,7 +10,7 @@ Streamward Corporation operates across multiple departments with an intelligent 
 - **Legal Department**: Contract management, compliance, risk assessment
 - **IT Department**: System administration, security, infrastructure
 
-## 🎯 Key Features
+##  Key Features
 
 1. **Multi-Provider Authentication**: Okta + Auth0 integration
 2. **Cross-App Access**: ID-JAG tokens between identity providers
@@ -20,7 +20,7 @@ Streamward Corporation operates across multiple departments with an intelligent 
 6. **Token Protection**: DPOP (Demonstrating Proof-of-Possession)
 7. **LangGraph Orchestration**: Multi-agent workflow management
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Python 3.9+
@@ -52,7 +52,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Test OpenAI connection
-python -c "import os; from dotenv import load_dotenv; import openai; load_dotenv(); client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY')); print('✅ OpenAI working!')"
+python -c "import os; from dotenv import load_dotenv; import openai; load_dotenv(); client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY')); print(' OpenAI working!')"
 
 # Start the server
 python -m uvicorn api.main:app --reload
@@ -73,7 +73,7 @@ cp env.template .env.local
 npm run dev
 ```
 
-## 🧪 Testing
+## Testing
 
 ### Test Full Stack
 1. Start backend: `./start_backend.sh`
@@ -81,40 +81,14 @@ npm run dev
 3. Visit: `http://localhost:3000`
 4. Test conversation context by asking follow-up questions
 
-## 🌐 Development URLs
+##  Development URLs
 
 - **Backend**: `http://localhost:8000`
 - **Frontend**: `http://localhost:3000`
 - **API Docs**: `http://localhost:8000/docs`
 - **Health Check**: `http://localhost:8000/health`
 
-## 🔧 Okta Configuration
-
-**Important**: Follow the [official Okta React sample](https://github.com/okta-samples/okta-react-sample) patterns.
-
-1. **Create an Okta application**:
-   - Go to Applications > Applications
-   - Click "Create App Integration"
-   - Choose "OIDC - OpenID Connect"
-   - Choose "Single-Page Application"
-   - Set redirect URI to `http://localhost:3000/login/callback`
-   - Set sign-out redirect URI to `http://localhost:3000`
-
-2. **Copy your Okta configuration**:
-   - Copy the Client ID
-   - Copy the Issuer URI
-
-3. **Enable Refresh Tokens**:
-   - In your Okta app settings, go to General Settings
-   - Edit the Grant type section
-   - Enable "Refresh Token"
-   - Save your changes
-
-4. **Configure Trusted Origins**:
-   - Go to Security > API > Trusted Origins
-   - Add `http://localhost:3000` as a trusted origin
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 okta-agentic-ai-demo/
@@ -129,7 +103,7 @@ okta-agentic-ai-demo/
 └── deployment/            # Deployment configurations
 ```
 
-## 🔄 Demo Scenarios
+##  Demo Scenarios
 
 1. **Employee Onboarding**: Multi-department workflow coordination
 2. **Partner Information Lookup**: Direct MCP query with Auth0
@@ -137,15 +111,10 @@ okta-agentic-ai-demo/
 4. **Company Policy Lookup**: DPOP-protected document search
 5. **Compliance Audit**: Multi-agent audit coordination
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 - **Backend**: FastAPI + Python + LangGraph
 - **Frontend**: React + TypeScript + NextAuth.js
 - **Vector DB**: Pinecone
 - **Identity**: Okta + Auth0
 - **Deployment**: Vercel (frontend) + Render (backend)
-
-## 📖 Documentation
-
-See `_reference/STREAMWARD_AI_PLAN.md` for detailed implementation plan and architecture.
-See `deployment/DEPLOYMENT.md` for deployment instructions.

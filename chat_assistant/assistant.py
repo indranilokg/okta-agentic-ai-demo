@@ -44,9 +44,9 @@ class StreamwardAssistant:
         # Initialize ID-JAG cross-app access manager for MCP token exchange
         try:
             self.cross_app_access_manager = OktaCrossAppAccessManager()
-            logger.info("✅ Chat Assistant initialized with ID-JAG cross-app access support")
+            logger.info(" Chat Assistant initialized with ID-JAG cross-app access support")
         except Exception as e:
-            logger.warning(f"⚠️ Chat Assistant: ID-JAG support not available: {e}")
+            logger.warning(f" Chat Assistant: ID-JAG support not available: {e}")
             self.cross_app_access_manager = None
         
         # Initialize MCP servers
@@ -286,9 +286,9 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                         # Removed user_sub - internal ID not needed
                     }
                     
-                    logger.info(f"🚀 Executing orchestrator workflow: {detected_workflow}")
-                    logger.info(f"📋 Parameters: {parameters}")
-                    logger.info(f"🔐 User has token for exchange: {bool(user_info.get('token'))}")
+                    logger.info(f" Executing orchestrator workflow: {detected_workflow}")
+                    logger.info(f" Parameters: {parameters}")
+                    logger.info(f" User has token for exchange: {bool(user_info.get('token'))}")
                     
                     workflow_result = await orchestrator.execute_workflow(
                         workflow_type=detected_workflow,
@@ -296,7 +296,7 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                         user_info=user_info
                     )
                     
-                    logger.info(f"✅ Orchestrator workflow completed: {workflow_result.get('status')}")
+                    logger.info(f" Orchestrator workflow completed: {workflow_result.get('status')}")
                     
                     # Update conversation history
                     self.sessions[session_id]["conversation_history"].append({"role": "user", "content": message})
@@ -321,7 +321,7 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                         "source_user_token": workflow_result.get("source_user_token")  # Original user token
                     }
                 except Exception as e:
-                    logger.error(f"❌ Orchestrator workflow failed: {e}")
+                    logger.error(f" Orchestrator workflow failed: {e}")
                     import traceback
                     logger.debug(f"Orchestrator error traceback: {traceback.format_exc()}")
                     # Fall through to normal chat processing
@@ -364,7 +364,7 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                         # Add context to the system message
                         context_message = f"\n\nRelevant information from authorized documents:\n{context}"
                         openai_messages[0]["content"] += context_message
-                        logger.info(f"✅ Added RAG context: {len(context)} characters")
+                        logger.info(f" Added RAG context: {len(context)} characters")
                         
                         # Get actual document count from the retriever
                         try:
@@ -449,7 +449,7 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
         """
         try:
             if not self.cross_app_access_manager:
-                logger.error("❌ MCP SDK not configured. ID-JAG exchange not available.")
+                logger.error(" MCP SDK not configured. ID-JAG exchange not available.")
                 return None
             
             if not id_token:

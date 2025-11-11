@@ -31,7 +31,7 @@ class EmployeesMCP:
         self.cross_app_access_manager = OktaCrossAppAccessManager()
         self.employees_data = self._initialize_mock_data()
         self.tools = self._define_tools()
-        logger.info("✅ EmployeesMCP initialized with ID-JAG token validation")
+        logger.info(" EmployeesMCP initialized with ID-JAG token validation")
     
     def _define_tools(self) -> List[Dict[str, Any]]:
         """Define available MCP tools for employee management"""
@@ -782,9 +782,9 @@ class EmployeesMCP:
         has_permission = any(req_scope in scope for req_scope in required_scopes)
         
         if has_permission:
-            logger.info(f"✅ Permission '{permission}' granted (scope: {scope})")
+            logger.info(f" Permission '{permission}' granted (scope: {scope})")
         else:
-            logger.warning(f"❌ Permission '{permission}' denied (scope: {scope})")
+            logger.warning(f" Permission '{permission}' denied (scope: {scope})")
         
         return has_permission
 
@@ -823,7 +823,7 @@ class EmployeesMCP:
             mcp_token = user_info.get("mcp_token")
             
             if not mcp_token:
-                logger.warning("⚠️ No MCP token provided in user_info. Access denied.")
+                logger.warning(" No MCP token provided in user_info. Access denied.")
                 return None
             
             logger.debug("[MCP_EMPLOYEES] Validating access token")

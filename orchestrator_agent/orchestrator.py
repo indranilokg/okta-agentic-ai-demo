@@ -630,9 +630,9 @@ class OrchestratorAgent:
             return f"""
 **Employee Onboarding Workflow Completed**
 
-✅ **HR Agent**: {hr_result.get('summary', 'Employee verification completed')}
-✅ **Finance Agent**: {finance_result.get('summary', 'Payroll setup completed')}
-✅ **Legal Agent**: {legal_result.get('summary', 'Compliance verification completed')}
+ **HR Agent**: {hr_result.get('summary', 'Employee verification completed')}
+ **Finance Agent**: {finance_result.get('summary', 'Payroll setup completed')}
+ **Legal Agent**: {legal_result.get('summary', 'Compliance verification completed')}
 
 The new employee onboarding process has been successfully completed with all necessary approvals and verifications.
             """
@@ -641,9 +641,9 @@ The new employee onboarding process has been successfully completed with all nec
             return f"""
 **Expense Approval Workflow Completed**
 
-✅ **HR Agent**: {hr_result.get('summary', 'Employee verification completed')}
-✅ **Finance Agent**: {finance_result.get('summary', 'Financial approval completed')}
-✅ **Legal Agent**: {legal_result.get('summary', 'Compliance check completed')}
+ **HR Agent**: {hr_result.get('summary', 'Employee verification completed')}
+ **Finance Agent**: {finance_result.get('summary', 'Financial approval completed')}
+ **Legal Agent**: {legal_result.get('summary', 'Compliance check completed')}
 
 The expense approval has been processed with all necessary verifications and approvals.
             """
@@ -652,9 +652,9 @@ The expense approval has been processed with all necessary verifications and app
             return f"""
 **Compliance Audit Workflow Completed**
 
-✅ **HR Agent**: {hr_result.get('summary', 'HR compliance check completed')}
-✅ **Finance Agent**: {finance_result.get('summary', 'Financial compliance verified')}
-✅ **Legal Agent**: {legal_result.get('summary', 'Legal compliance confirmed')}
+ **HR Agent**: {hr_result.get('summary', 'HR compliance check completed')}
+ **Finance Agent**: {finance_result.get('summary', 'Financial compliance verified')}
+ **Legal Agent**: {legal_result.get('summary', 'Legal compliance confirmed')}
 
 The compliance audit has been completed with all departments verified.
             """
@@ -663,9 +663,9 @@ The compliance audit has been completed with all departments verified.
             return f"""
 **Workflow Completed Successfully**
 
-✅ **HR Agent**: {hr_result.get('summary', 'HR tasks completed')}
-✅ **Finance Agent**: {finance_result.get('summary', 'Finance tasks completed')}
-✅ **Legal Agent**: {legal_result.get('summary', 'Legal tasks completed')}
+ **HR Agent**: {hr_result.get('summary', 'HR tasks completed')}
+ **Finance Agent**: {finance_result.get('summary', 'Finance tasks completed')}
+ **Legal Agent**: {legal_result.get('summary', 'Legal tasks completed')}
 
 The {workflow_type} workflow has been completed with coordination from all relevant departments.
             """

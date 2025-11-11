@@ -257,7 +257,7 @@ export default function MCPCard({ mcpInfo, query }: MCPCardProps) {
               <div className="space-y-3">
                 {/* Chat Assistant Section */}
                 <div className="mb-3 pb-3 border-b border-blue-200">
-                  <p className="text-xs font-semibold text-blue-700 mb-2">🔐 Chat Assistant (STEPS 1-3)</p>
+                  <p className="text-xs font-semibold text-blue-700 mb-2"> Chat Assistant (STEPS 1-3)</p>
                 </div>
 
                 {/* Step 1: Exchange ID Token */}
@@ -307,7 +307,7 @@ export default function MCPCard({ mcpInfo, query }: MCPCardProps) {
 
                 {/* MCP Server Section */}
                 <div className="mb-3 pb-3 border-b border-green-200 mt-3">
-                  <p className="text-xs font-semibold text-green-700">🔓 MCP Server (STEP 4)</p>
+                  <p className="text-xs font-semibold text-green-700"> MCP Server (STEP 4)</p>
                 </div>
 
                 {/* Arrow */}

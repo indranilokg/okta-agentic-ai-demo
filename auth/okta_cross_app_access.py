@@ -50,7 +50,7 @@ class OktaCrossAppAccessManager:
         agent_private_key_str = os.getenv("OKTA_CHAT_ASSISTANT_AGENT_PRIVATE_KEY")
         
         if not agent_id or not agent_private_key_str:
-            logger.warning("⚠️ Chat Assistant Agent credentials not fully configured. ID-JAG exchange will be disabled.")
+            logger.warning(" Chat Assistant Agent credentials not fully configured. ID-JAG exchange will be disabled.")
             self.main_config = None
             self.mcp_config = None
         else:
@@ -68,7 +68,7 @@ class OktaCrossAppAccessManager:
                     principal_id=agent_id.strip(),  # Service account for JWT assertion
                     private_jwk=agent_private_key  # Key for signing JWT
                 )
-                logger.info("✅ Main config loaded for ID-JAG exchange (JWT Bearer)")
+                logger.info(" Main config loaded for ID-JAG exchange (JWT Bearer)")
                 
                 # STEP 3 Config: ID-JAG → MCP auth server token exchange
                 # Uses JWT bearer assertion with agent credentials
@@ -80,9 +80,9 @@ class OktaCrossAppAccessManager:
                     principal_id=agent_id.strip(),  # Service account for JWT assertion
                     private_jwk=agent_private_key  # Key for signing JWT
                 )
-                logger.info("✅ MCP config loaded for MCP token exchange (JWT Bearer)")
+                logger.info(" MCP config loaded for MCP token exchange (JWT Bearer)")
             except json.JSONDecodeError as e:
-                logger.error(f"❌ Failed to parse OKTA_CHAT_ASSISTANT_AGENT_PRIVATE_KEY: {e}")
+                logger.error(f" Failed to parse OKTA_CHAT_ASSISTANT_AGENT_PRIVATE_KEY: {e}")
                 self.main_config = None
                 self.mcp_config = None
         
@@ -113,7 +113,7 @@ class OktaCrossAppAccessManager:
         """
         try:
             if not self.sdk_mcp:
-                logger.error("❌ MCP SDK not configured. ID-JAG exchange not available.")
+                logger.error(" MCP SDK not configured. ID-JAG exchange not available.")
                 return None
             
             logger.debug("[ID-JAG] Starting token exchange")
@@ -189,7 +189,7 @@ class OktaCrossAppAccessManager:
             }
             
         except Exception as e:
-            logger.error(f"❌ ID-JAG exchange failed: {e}")
+            logger.error(f" ID-JAG exchange failed: {e}")
             import traceback
             logger.debug(f"Traceback: {traceback.format_exc()}")
             return None
@@ -208,7 +208,7 @@ class OktaCrossAppAccessManager:
         """
         try:
             if not self.sdk_mcp:
-                logger.error("❌ MCP SDK not configured. Token verification not available.")
+                logger.error(" MCP SDK not configured. Token verification not available.")
                 return None
             
             logger.debug("[ID-JAG] STEP 4: Verifying MCP token")
@@ -244,7 +244,7 @@ class OktaCrossAppAccessManager:
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Token verification failed: {e}")
+            logger.error(f" Token verification failed: {e}")
             import traceback
             logger.debug(f"Traceback: {traceback.format_exc()}")
             return None

@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     const audience = process.env.OKTA_AUDIENCE || process.env.OKTA_MAIN_AUDIENCE || 'api://streamward-chat';
     
     // Log configuration for debugging
-    console.log('🔧 [Custom Auth Callback] Configuration:');
+    console.log(' [Custom Auth Callback] Configuration:');
     console.log('  - OKTA_MAIN_SERVER_ID env var:', process.env.OKTA_MAIN_SERVER_ID || 'NOT SET (using default)');
     console.log('  - mainServerId being used:', mainServerId);
     console.log('  - audience being used:', audience);
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
     
     const tokens = await tokenResponse.json();
     
-    console.log('✅ [Custom Auth Callback] Tokens received from custom server:');
+    console.log(' [Custom Auth Callback] Tokens received from custom server:');
     console.log('  - Access Token (first 50 chars):', tokens.access_token?.substring(0, 50) + '...');
     console.log('  - ID Token (first 50 chars):', tokens.id_token?.substring(0, 50) + '...');
     console.log('  - Full Access Token:', tokens.access_token);

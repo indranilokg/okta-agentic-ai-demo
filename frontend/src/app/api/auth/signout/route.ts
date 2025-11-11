@@ -98,11 +98,11 @@ export async function POST(request: Request) {
         if (idTokenToUse) {
           // Use ID token hint for logout (required by Okta)
           const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idTokenToUse}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
-          console.log('🔐 [Signout API] Redirecting to Okta logout with ID token');
+          console.log(' [Signout API] Redirecting to Okta logout with ID token');
           return NextResponse.redirect(oktaLogoutUrl);
         } else {
           // If no ID token available, skip Okta logout
-          console.log('⚠️ [Signout API] No ID token available - skipping Okta logout');
+          console.log(' [Signout API] No ID token available - skipping Okta logout');
         }
       }
     }
@@ -130,7 +130,7 @@ export async function GET(request: Request) {
     const session = await getServerSession(authOptions);
     if (!idTokenToUse && session?.idToken) {
       idTokenToUse = session.idToken;
-      console.log('🔐 [Signout API] Got ID token from session');
+      console.log(' [Signout API] Got ID token from session');
     }
     
     // Also check cookie as fallback
@@ -139,7 +139,7 @@ export async function GET(request: Request) {
       const orgIdTokenCookie = cookieStore.get('org-id-token');
       if (orgIdTokenCookie?.value) {
         idTokenToUse = orgIdTokenCookie.value;
-        console.log('🔐 [Signout API] Got ID token from cookie');
+        console.log(' [Signout API] Got ID token from cookie');
       }
     }
     
@@ -150,14 +150,14 @@ export async function GET(request: Request) {
       if (idTokenToUse) {
         // Use ID token hint for logout (required by Okta)
         const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idTokenToUse}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
-        console.log('🔐 [Signout API] Redirecting to Okta logout with ID token');
+        console.log(' [Signout API] Redirecting to Okta logout with ID token');
         console.log('  - ID Token (first 50 chars):', idTokenToUse.substring(0, 50) + '...');
         // Clear cookies and redirect to Okta
         return clearAllCookies(() => NextResponse.redirect(oktaLogoutUrl));
       } else {
         // If no ID token available, skip Okta logout and just clear local cookies
         // Okta logout requires id_token_hint - client_id alone doesn't work
-        console.log('⚠️ [Signout API] No ID token available - skipping Okta logout, clearing local cookies only');
+        console.log(' [Signout API] No ID token available - skipping Okta logout, clearing local cookies only');
         console.log('  - Checked: query param, session, and cookie - all empty');
         return clearAllCookies(() => NextResponse.redirect(baseUrl));
       }

@@ -1,6 +1,6 @@
 # Streamward AI Assistant - Deployment Guide
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Python 3.9+
@@ -68,7 +68,7 @@ npm run dev
 3. Set publish directory: `dist`
 4. Add environment variables
 
-## 🔧 Configuration
+##  Configuration
 
 ### Required Environment Variables
 
@@ -108,7 +108,7 @@ VITE_API_BASE_URL=http://localhost:8000
 VITE_WS_URL=ws://localhost:8000
 ```
 
-## 🏗️ Architecture
+## 🏗 Architecture
 
 ### Production Architecture
 ```
@@ -160,7 +160,7 @@ The system uses DPOP (Demonstrating Proof-of-Possession) for protecting document
 3. **Verification**: Verify DPOP proof on server side
 4. **Protection**: All document searches require valid DPOP proof
 
-## 📊 Monitoring
+##  Monitoring
 
 ### Health Checks
 - Backend: `GET /health`
@@ -172,7 +172,7 @@ The system uses DPOP (Demonstrating Proof-of-Possession) for protecting document
 - Error tracking: Exception handling and reporting
 - Performance monitoring: Response times and throughput
 
-## 🚀 Scaling
+##  Scaling
 
 ### Horizontal Scaling
 - Multiple backend instances behind load balancer
@@ -184,7 +184,7 @@ The system uses DPOP (Demonstrating Proof-of-Possession) for protecting document
 - Consider Redis for session storage at scale
 - Implement caching for frequently accessed data
 
-## 🔄 CI/CD Pipeline
+##  CI/CD Pipeline
 
 ### GitHub Actions Example
 ```yaml

@@ -43,11 +43,11 @@ class DocumentRetriever:
                 document_id=document_id  # Pass the document_id to use as the vector ID
             )
             
-            logger.info(f"✅ Added document {document_id} to Pinecone knowledge base")
+            logger.info(f" Added document {document_id} to Pinecone knowledge base")
             return doc_id is not None
             
         except Exception as e:
-            logger.error(f"❌ Failed to add document {document_id}: {e}")
+            logger.error(f" Failed to add document {document_id}: {e}")
             return False
     
     async def search_documents(self, query: str, user_email: str) -> List[str]:
@@ -80,16 +80,16 @@ class DocumentRetriever:
                     if has_permission:
                         authorized_docs.append(doc.page_content)
                     else:
-                        logger.debug(f"❌ No permission for user {user_email} on document {doc_id}")
+                        logger.debug(f" No permission for user {user_email} on document {doc_id}")
             
-            logger.info(f"✅ Found {len(authorized_docs)} authorized documents out of {len(documents)} total")
+            logger.info(f" Found {len(authorized_docs)} authorized documents out of {len(documents)} total")
             if len(authorized_docs) == 0 and len(documents) > 0:
-                logger.warning(f"⚠️ No authorized documents found! User: {user_email}, Total documents found: {len(documents)}")
+                logger.warning(f" No authorized documents found! User: {user_email}, Total documents found: {len(documents)}")
                 logger.warning(f"   This may indicate FGA permission issues or user email mismatch")
             return authorized_docs
             
         except Exception as e:
-            logger.error(f"❌ Failed to search documents: {e}")
+            logger.error(f" Failed to search documents: {e}")
             return []
 
 # Global document retriever instance
@@ -112,7 +112,7 @@ async def get_context_docs_fn(question: str, config: RunnableConfig):
     if not user_email:
         return "User email not found in credentials."
     
-    logger.info(f"🔍 Searching documents for user: {user_email}, query: {question}")
+    logger.info(f" Searching documents for user: {user_email}, query: {question}")
     
     # Search documents with FGA filtering
     documents = await document_retriever.search_documents(question, user_email)
@@ -122,7 +122,7 @@ async def get_context_docs_fn(question: str, config: RunnableConfig):
     
     # Combine documents
     context = "\n\n".join(documents)
-    logger.info(f"✅ Retrieved {len(documents)} authorized documents")
+    logger.info(f" Retrieved {len(documents)} authorized documents")
     
     return context
 

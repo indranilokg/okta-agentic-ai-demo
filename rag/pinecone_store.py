@@ -78,7 +78,7 @@ class PineconeDocumentStore:
                 embedding=self.embeddings
             )
             
-            logger.info(f"✅ Pinecone initialized successfully with index: {self.index_name}")
+            logger.info(f" Pinecone initialized successfully with index: {self.index_name}")
             return True
             
         except Exception as e:
@@ -122,7 +122,7 @@ class PineconeDocumentStore:
             )
             logger.info(f"Upsert response: {upsert_response}")
             
-            logger.info(f"✅ Document added to Pinecone with ID: {doc_id}")
+            logger.info(f" Document added to Pinecone with ID: {doc_id}")
             return doc_id
             
         except Exception as e:
@@ -209,7 +209,7 @@ class PineconeDocumentStore:
         try:
             # Delete by document_id metadata
             self.index.delete(filter={"document_id": document_id})
-            logger.info(f"✅ Document deleted from Pinecone: {document_id}")
+            logger.info(f" Document deleted from Pinecone: {document_id}")
             return True
             
         except Exception as e:
