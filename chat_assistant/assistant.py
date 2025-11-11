@@ -145,8 +145,8 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             # Workflow entity keywords - only match with explicit action verbs
             # These should NOT be used for queries (list, show, tell, query, info, details, etc.)
             workflow_entity_keywords = {
-                "finance": ["financial", "finance", "budget"],
-                "hr": ["staff", "hr", "human resources"],  # Removed: employee, benefits (too query-focused)
+                "finance": ["financial", "finance", "budget", "payment", "transaction", "invoice", "expense", "compliance"],
+                "hr": ["employee", "staff", "hr", "human resources", "hire", "onboard"],
                 "legal": ["legal", "compliance", "contract", "regulatory", "law", "attorney"]
             }
             
@@ -176,16 +176,28 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                     has_action_verb = any(verb in message_lower for verb in action_verbs)
                     
                     if has_action_verb:
-                        for agent, entity_keywords in workflow_entity_keywords.items():
-                            if any(keyword in message_lower for keyword in entity_keywords):
-                                detected_agent = agent
-                                if agent == "finance":
-                                    detected_workflow = "financial_transaction"
-                                elif agent == "hr":
-                                    detected_workflow = "employee_onboarding"
-                                elif agent == "legal":
-                                    detected_workflow = "compliance_review"
-                                break
+                        # Special case: Check for compliance review workflows (finance + compliance keywords)
+                        finance_keywords = ["financial", "finance", "payment", "transaction", "invoice", "expense"]
+                        compliance_keywords = ["compliance", "review", "compliance review"]
+                        has_finance = any(kw in message_lower for kw in finance_keywords)
+                        has_compliance = any(kw in message_lower for kw in compliance_keywords)
+                        
+                        if has_finance and has_compliance:
+                            # This is a compliance review workflow (Finance → Legal)
+                            detected_workflow = "compliance_review"
+                            detected_agent = "finance"  # Start with finance agent
+                        else:
+                            # Regular workflow detection
+                            for agent, entity_keywords in workflow_entity_keywords.items():
+                                if any(keyword in message_lower for keyword in entity_keywords):
+                                    detected_agent = agent
+                                    if agent == "finance":
+                                        detected_workflow = "financial_transaction"
+                                    elif agent == "hr":
+                                        detected_workflow = "employee_onboarding"
+                                    elif agent == "legal":
+                                        detected_workflow = "compliance_review"
+                                    break
             
             # 3. MCP Detection - Employee or Partner queries
             # ONLY trigger for QUERY-ORIENTED prompts (list, show, get, tell, what, information, details)
@@ -271,7 +283,19 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             
             # Route to A2A orchestrator ONLY if:
             # - A2A workflow detected (not RAG, not MCP)
-            # - User has token for exchange
+            # - User has custom access token for multi-agent workflow
+            logger.debug(f"[CHAT] A2A check: scenario={detected_scenario}, workflow={detected_workflow}, has_token={bool(user_info.get('token'))}")
+            
+            # Check if A2A workflow detected but access token missing
+            if detected_scenario == "A2A" and detected_workflow and not user_info.get("token"):
+                logger.warning(f"[CHAT] A2A workflow detected but no access token available: {detected_workflow}")
+                return {
+                    "content": "This action requires authentication with the custom authorization server. Please complete the authentication flow to use multi-agent workflows.",
+                    "agent_type": "Authentication Required",
+                    "used_rag": False,
+                    "workflow_info": {"workflow_type": detected_workflow, "status": "blocked"}
+                }
+            
             if detected_scenario == "A2A" and detected_workflow and user_info.get("token"):
                 logger.debug(f"[CHAT] Routing to orchestrator: workflow={detected_workflow}, agent={detected_agent}")
                 try:
@@ -388,6 +412,11 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             openai_messages.append({"role": "user", "content": message})
             
             logger.info(f"Total messages sent to OpenAI: {len(openai_messages)}")
+            
+            # Log the final enriched prompt before sending to LLM (only for RAG to debug context injection)
+            if detected_scenario == "RAG":
+                logger.debug(f"[PROMPT] System message (enriched): {openai_messages[0]['content']}")
+                logger.debug(f"[PROMPT] User message: {message}")
             
             # Call OpenAI API with full conversation context
             response = await asyncio.get_event_loop().run_in_executor(

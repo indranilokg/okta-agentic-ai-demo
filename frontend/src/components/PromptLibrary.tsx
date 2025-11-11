@@ -27,28 +27,30 @@ const promptCategories: PromptCategory[] = [
     prompts: [
       'What are the security policies for data access?',
       'Search for documents about GDPR compliance',
-      'Search for documents about benefits and compensation policies',
-      'Tell me about our company security and compliance requirements',
-      'What documents do we have related to financial regulations?',
-      'Show me the security documentation for data handling'
+      'Search for documents about benefits and compensation policies'
     ]
   },
   {
     id: 'token-exchange',
-    name: 'Token Exchange (A2A)',
-    description: 'Multi-agent workflows with token exchange',
+    name: 'A2A - Multi-Agent Workflows',
+    description: 'Complex workflows routing through multiple agents',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
       </svg>
     ),
     prompts: [
+      // Samples 1-2: Main → HR → Finance → Legal (Employee Onboarding)
       'I need to onboard a new employee',
-      'Help me process a financial transaction',
-      'I need to approve a high-value payment',
-      'Can you help me with employee onboarding?',
-      'Process a financial transaction for approval',
-      'I need to hire a new staff member'
+      'Help me hire and onboard a new staff member',
+      
+      // Samples 3-4: Main → Finance → Legal (Compliance Review)
+      'Process a financial transaction for compliance review',
+      'I need to approve a high-value payment for compliance',
+      
+      // Samples 5-6: Main → Finance (Finance Only)
+      'Process a financial expense report',
+      'Help me approve an invoice for payment'
     ]
   },
   {

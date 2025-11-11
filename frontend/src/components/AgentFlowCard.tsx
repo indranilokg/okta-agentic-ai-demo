@@ -96,22 +96,24 @@ export default function AgentFlowCard({ agentFlow, tokenExchanges, workflowType,
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50 transition-colors rounded-t-2xl"
       >
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-3">
           <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
-          <span className="font-medium text-gray-900">A2A Agent Flow</span>
+          <div>
+            <span className="font-medium text-gray-900 block">A2A Agent Flow</span>
+            {workflowType && (
+              <span className="text-xs text-gray-500 mt-0.5">
+                Workflow: {workflowType.replace(/_/g, ' ')}
+              </span>
+            )}
+          </div>
           {agentFlow && agentFlow.length > 0 && (
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full ml-auto">
               {agentFlow.length} agent{agentFlow.length !== 1 ? 's' : ''}
-            </span>
-          )}
-          {workflowType && (
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-              {workflowType}
             </span>
           )}
         </div>
         <svg
-          className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 text-gray-500 transition-transform ml-2 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -173,7 +175,33 @@ export default function AgentFlowCard({ agentFlow, tokenExchanges, workflowType,
           
           {/* Agent Flow Visualization */}
           <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Agent Routing Flow</h4>
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Routing Flow Diagram</h4>
+            
+            {/* Flow Path at top */}
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-center space-x-2 flex-wrap gap-2">
+                <div className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs font-medium">
+                  Main
+                </div>
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+                {agentFlow.map((step, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <div className={`${getAgentColor(step.agent)} text-white px-2 py-1 rounded text-xs font-medium`}>
+                      {getAgentLabel(step.agent).split(' ')[0]}
+                    </div>
+                    {index < agentFlow.length - 1 && (
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                      </svg>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Detailed Agent Flow */}
             <div className="space-y-3">
               {/* Orchestrator */}
               <div className="flex items-center">

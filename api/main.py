@@ -165,6 +165,15 @@ async def root():
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now()}
 
+@app.get("/api/config/okta")
+async def get_okta_config():
+    """Return Okta configuration needed for frontend custom server OAuth flow (A2A)"""
+    return {
+        "mainServerId": os.getenv("OKTA_MAIN_SERVER_ID", "default"),
+        "oktaDomain": os.getenv("OKTA_DOMAIN"),
+        "audience": os.getenv("OKTA_MAIN_AUDIENCE", "api://streamward-chat")
+    }
+
 @app.post("/api/chat", response_model=SimpleChatResponse)
 async def chat_endpoint(request: ChatMessageList, http_request: Request, current_user: Optional[dict] = Depends(get_current_user_optional)):
     """Main chat endpoint that routes messages to appropriate agents"""
@@ -186,6 +195,8 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         custom_id_token = http_request.headers.get('X-ID-Token') or last_message.get('id_token')
         custom_access_token = http_request.headers.get('X-Custom-Access-Token') or http_request.headers.get('X-Access-Token') or last_message.get('access_token')
         
+        # Log token availability from each source
+        logger.info(f"[API] Token sources - X-ID-Token: {bool(http_request.headers.get('X-ID-Token'))}, X-Custom-Access-Token: {bool(http_request.headers.get('X-Custom-Access-Token'))}, X-Access-Token: {bool(http_request.headers.get('X-Access-Token'))}")
         logger.debug(f"[API] Tokens: has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
         
         # Log full tokens at DEBUG level for troubleshooting
@@ -218,6 +229,18 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
                     logger.warning("[API] Custom access token validation failed")
             except Exception as e:
                 logger.warning(f"[API] Token validation error: {str(e)}")
+        elif custom_id_token:
+            # Also validate ID token to extract user info for RAG access
+            try:
+                from auth.okta_validator import token_validator
+                validated_user = await token_validator.validate_token(custom_id_token)
+                if validated_user:
+                    logger.debug(f"[API] User: validated from ID token={validated_user.get('email')}")
+                    user_info = validated_user
+                else:
+                    logger.warning("[API] ID token validation failed")
+            except Exception as e:
+                logger.warning(f"[API] ID token validation error: {str(e)}")
         
         if not user_info:
             # Fallback to demo user
@@ -232,10 +255,12 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         if custom_id_token:
             user_info["id_token"] = custom_id_token
         
+        # For A2A workflows: requires valid access token
         if custom_access_token:
             user_info["token"] = custom_access_token
         
         logger.info(f"[API] User_session: email={user_info['email']}, has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
+        logger.debug(f"[API] User_info keys: {list(user_info.keys())}")
         
         # Process message through Streamward Assistant (with memory management)
         response = await streamward_assistant.process_message(

@@ -647,7 +647,7 @@ export default function StreamwardAssistant() {
             </div>
           </div>
 
-          {/* Sidebar - Token Card, RAG Card, Agent Flow Card, and System Status */}
+          {/* Sidebar - Token Card, RAG Card, Agent Flow Card, A2A Card, and System Status */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
               <IdTokenCard idToken={session?.idToken || ''} />

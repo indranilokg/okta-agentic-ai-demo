@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     const idToken = session?.idToken;
     const customAccessToken = session?.customAccessToken;
     
-    console.debug(`[CHAT_API] Request: user=${session?.user?.email}, has_idToken=${!!idToken}, has_customAccessToken=${!!customAccessToken}`);
+    console.log(`[CHAT_API] Session tokens: user=${session?.user?.email}, has_idToken=${!!idToken}, has_customAccessToken=${!!customAccessToken}`);
 
     // Forward to FastAPI backend
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';

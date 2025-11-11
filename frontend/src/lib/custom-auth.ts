@@ -92,8 +92,10 @@ export async function initiateCustomServerAuth(): Promise<void> {
   const audience = config.audience;
   const redirectUri = `${window.location.origin}/api/auth/callback/custom`;
   
+  console.log('[Custom Auth] Validating config - oktaDomain:', oktaDomain, 'clientId:', clientId);
+  
   if (!oktaDomain || !clientId) {
-    console.error('Custom server auth: Missing required configuration');
+    console.error('[Custom Auth] Missing required configuration - oktaDomain:', oktaDomain, 'clientId:', clientId);
     return;
   }
   

@@ -346,16 +346,12 @@ Always maintain detailed audit trails and coordinate with other agents as needed
                 minimal["email"] = user_info["email"]
             if user_info.get("name"):
                 minimal["name"] = user_info["name"]
-            logger.debug(" Privacy Level 3: Sending email/name to LLM (PII exposure)")
         else:
             # Privacy Level 1: Anonymous ID only
             email = user_info.get("email", "anonymous")
             salt = os.getenv("ANONYMOUS_ID_SALT", "streamward-privacy-salt")
             anonymous_id = hashlib.sha256(f"{email}{salt}".encode()).hexdigest()[:16]
             minimal["user_id"] = f"user_{anonymous_id}"
-            logger.debug("🔒 Privacy Level 1: Using anonymous user ID (no PII exposure)")
-        
-        logger.debug("🔒 Sanitized user_info for LLM: removed token, claims, and PII")
         return minimal
     
     async def _handle_general_finance_task(self, workflow_type: str, parameters: Dict[str, Any], user_info: Dict[str, Any], token: str) -> Dict[str, Any]:

@@ -35,17 +35,36 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${baseUrl}/?error=not_authenticated`);
     }
     
-    const oktaDomain = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL;
-    const mainServerId = process.env.OKTA_MAIN_SERVER_ID || 'default';
+    // Fetch config from backend first (has OKTA_MAIN_SERVER_ID)
+    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+    let mainServerId = 'default';
+    let audience = 'api://streamward-chat';
+    let oktaDomain = process.env.NEXT_PUBLIC_OKTA_BASE_URL;
+    
+    try {
+      const configResponse = await fetch(`${backendUrl}/api/config/okta`, {
+        cache: 'no-store',
+      });
+      if (configResponse.ok) {
+        const backendConfig = await configResponse.json();
+        mainServerId = backendConfig.mainServerId;
+        audience = backendConfig.audience;
+        oktaDomain = backendConfig.oktaDomain || oktaDomain;
+        console.log('[Custom Auth Callback] Fetched config from backend:', backendConfig);
+      }
+    } catch (error) {
+      console.warn('[Custom Auth Callback] Failed to fetch from backend, using fallback:', error);
+      mainServerId = process.env.NEXT_PUBLIC_OKTA_MAIN_SERVER_ID || 'default';
+      audience = process.env.NEXT_PUBLIC_OKTA_AUDIENCE || process.env.NEXT_PUBLIC_OKTA_MAIN_AUDIENCE || 'api://streamward-chat';
+    }
+    
     const clientId = process.env.OKTA_CLIENT_ID;
     const clientSecret = process.env.OKTA_CLIENT_SECRET;
-    const audience = process.env.OKTA_AUDIENCE || process.env.OKTA_MAIN_AUDIENCE || 'api://streamward-chat';
     
     // Log configuration for debugging
-    console.log(' [Custom Auth Callback] Configuration:');
-    console.log('  - OKTA_MAIN_SERVER_ID env var:', process.env.OKTA_MAIN_SERVER_ID || 'NOT SET (using default)');
-    console.log('  - mainServerId being used:', mainServerId);
-    console.log('  - audience being used:', audience);
+    console.log('[Custom Auth Callback] Configuration:');
+    console.log('  - mainServerId:', mainServerId);
+    console.log('  - audience:', audience);
     console.log('  - oktaDomain:', oktaDomain);
     const redirectUri = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/auth/callback/custom`;
     

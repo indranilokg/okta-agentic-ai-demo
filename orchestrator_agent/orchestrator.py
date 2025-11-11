@@ -127,9 +127,9 @@ class OrchestratorAgent:
                 return "hr_agent"
             elif "hr" in workflow_type:
                 return "hr_agent"
-            elif "financial" in workflow_type or "finance" in workflow_type or "transaction" in workflow_type:
+            elif "financial" in workflow_type or "finance" in workflow_type or "transaction" in workflow_type or "compliance" in workflow_type or "review" in workflow_type:
                 return "finance_agent"
-            elif "legal" in workflow_type or "compliance" in workflow_type:
+            elif "legal" in workflow_type:
                 return "legal_agent"
             else:
                 # Default to finance for now
@@ -167,14 +167,14 @@ class OrchestratorAgent:
             }
         )
         
-        # Add conditional routing from Finance agent - if employee_onboarding, continue to Legal
+        # Add conditional routing from Finance agent - if employee_onboarding or compliance_review, continue to Legal
         def route_from_finance(state: Dict[str, Any]) -> str:
-            """Route from Finance agent - if employee_onboarding, continue to Legal"""
+            """Route from Finance agent - if employee_onboarding or compliance_review, continue to Legal"""
             workflow_type = state.get("workflow_type", "")
             finance_result = state.get("finance_result")
             
-            # If employee onboarding and Finance is done, continue to Legal
-            if ("employee" in workflow_type or "onboard" in workflow_type) and finance_result:
+            # If employee onboarding or compliance review and Finance is done, continue to Legal
+            if (("employee" in workflow_type or "onboard" in workflow_type) or ("compliance" in workflow_type or "review" in workflow_type)) and finance_result:
                 logger.info("[WORKFLOW_ROUTING] Finance complete, routing to Legal Agent")
                 return "legal_agent"
             else:
@@ -331,8 +331,8 @@ class OrchestratorAgent:
             if "token_exchanges" not in state:
                 state["token_exchanges"] = []
             state["token_exchanges"].append({
-                "from": "user",
-                "to": "hr_agent",
+                "from": "Orchestrator",
+                "to": "HR Agent",
                 "audience": self.okta_auth.hr_audience,
                 "scope": get_default_hr_scopes(),
                 "token": hr_token
@@ -346,8 +346,8 @@ class OrchestratorAgent:
                 "step": len(state.get("agent_flow", [])) + 1,
                 "timestamp": datetime.now().isoformat(),
                 "token_exchange": {
-                    "from": "user",
-                    "to": "hr_agent",
+                    "from": "Orchestrator",
+                    "to": "HR Agent",
                     "audience": self.okta_auth.hr_audience
                 }
             })
@@ -395,9 +395,15 @@ class OrchestratorAgent:
             # Track token exchange
             if "token_exchanges" not in state:
                 state["token_exchanges"] = []
+            # Determine source: Orchestrator if first agent, otherwise from previous agent
+            previous_agent = state.get("agent_flow", [])[-1]["agent"] if state.get("agent_flow") else None
+            source = f"Previous Agent (from agent_flow)" if previous_agent else "Orchestrator"
+            if previous_agent == "hr_agent":
+                source = "HR Agent"
+            
             state["token_exchanges"].append({
-                "from": "user",
-                "to": "finance_agent",
+                "from": source,
+                "to": "Finance Agent",
                 "audience": self.okta_auth.finance_audience,
                 "scope": get_default_finance_scopes(),
                 "token": finance_token
@@ -411,8 +417,8 @@ class OrchestratorAgent:
                 "step": len(state.get("agent_flow", [])) + 1,
                 "timestamp": datetime.now().isoformat(),
                 "token_exchange": {
-                    "from": "user",
-                    "to": "finance_agent",
+                    "from": source,
+                    "to": "Finance Agent",
                     "audience": self.okta_auth.finance_audience
                 }
             })
@@ -460,9 +466,17 @@ class OrchestratorAgent:
             # Track token exchange
             if "token_exchanges" not in state:
                 state["token_exchanges"] = []
+            # Determine source: from previous agent in flow
+            previous_agent = state.get("agent_flow", [])[-1]["agent"] if state.get("agent_flow") else None
+            source = "Orchestrator"
+            if previous_agent == "hr_agent":
+                source = "HR Agent"
+            elif previous_agent == "finance_agent":
+                source = "Finance Agent"
+            
             state["token_exchanges"].append({
-                "from": "user",
-                "to": "legal_agent",
+                "from": source,
+                "to": "Legal Agent",
                 "audience": self.okta_auth.legal_audience,
                 "scope": get_default_legal_scopes(),
                 "token": legal_token
@@ -476,8 +490,8 @@ class OrchestratorAgent:
                 "step": len(state.get("agent_flow", [])) + 1,
                 "timestamp": datetime.now().isoformat(),
                 "token_exchange": {
-                    "from": "user",
-                    "to": "legal_agent",
+                    "from": source,
+                    "to": "Legal Agent",
                     "audience": self.okta_auth.legal_audience
                 }
             })
@@ -532,7 +546,6 @@ class OrchestratorAgent:
                 audit.pop(key, None)
             filtered["audit_trail"] = audit
         
-        logger.debug("🔒 Sanitized agent result: removed tokens and sensitive data")
         return filtered
     
     async def _coordination_node(self, state: Dict[str, Any]) -> Dict[str, Any]:

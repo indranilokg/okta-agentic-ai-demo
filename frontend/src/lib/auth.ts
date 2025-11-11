@@ -67,21 +67,13 @@ export const authOptions = {
         
         if (customAccessTokenCookie?.value) {
           token.customAccessToken = customAccessTokenCookie.value;
-          console.debug('[JWT] Custom access token found and stored');
-          if (process.env.NODE_ENV === 'development') {
-            console.debug(`[JWT] Custom token (first 50): ${customAccessTokenCookie.value.substring(0, 50)}...`);
-            console.debug(`[JWT] Full custom token: ${customAccessTokenCookie.value}`);
-          }
         } else if (token.customAccessToken) {
           // Tokens missing from cookies - likely logout
-          console.debug('[JWT] Custom tokens cleared (logout scenario)');
           token.customAccessToken = undefined;
         }
       } catch (error) {
         // Cookies might not be available in all contexts, ignore silently
       }
-      
-      console.debug(`[JWT] Token state: has_idToken=${!!token.idToken}, has_customAccessToken=${!!token.customAccessToken}`);
       
       return token;
     },
@@ -91,12 +83,6 @@ export const authOptions = {
       // - Custom access token (for token exchange)
       session.idToken = token.idToken;
       session.customAccessToken = token.customAccessToken;
-      
-      console.debug(`[SESSION] Built for user: ${token.email}, has_idToken=${!!token.idToken}, has_customAccessToken=${!!token.customAccessToken}`);
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(`[SESSION] Full ID token: ${token.idToken}`);
-        console.debug(`[SESSION] Full custom token: ${token.customAccessToken}`);
-      }
       
       session.user = {
         ...session.user,
