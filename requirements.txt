@@ -36,6 +36,4 @@ langchain-pinecone>=0.1.0
 okta-jwt-verifier>=0.2.3
 
 # Okta AI SDK for token exchange, cross-app access, CIBA, and DPOP
-# Installing from Test PyPI - use: pip install --extra-index-url https://test.pypi.org/simple/ okta-ai-sdk-proto
-# v1.0.0a7: Cleaned up emojis from logging, improved code quality
-okta-ai-sdk-proto>=1.0.0a7
+okta-ai-sdk-proto>=1.0.0
