@@ -1,7 +1,7 @@
 fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==2.9.0
-httpx==0.25.2
+httpx>=0.28.0,<1.0.0
 python-jose[cryptography]==3.3.0
 cryptography==43.0.0
 langgraph==0.3.34
