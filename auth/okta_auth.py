@@ -105,12 +105,13 @@ class OktaAuth:
             logger.error(f"Missing SDK config: oktaDomain={self.okta_domain}, clientId={self.client_id}, clientSecret={self.client_secret is not None}")
             raise ValueError("Missing required Okta configuration for SDK initialization")
         
-        sdk_config = OktaAIConfig(
-            oktaDomain=self.okta_domain,
-            clientId=self.client_id,
-            clientSecret=self.client_secret,
-            authorizationServerId=self.main_server_id
-        )
+        # Pass dict directly to OktaAISDK - it expects camelCase field names
+        sdk_config = {
+            "oktaDomain": self.okta_domain,
+            "clientId": self.client_id,
+            "clientSecret": self.client_secret,
+            "authorizationServerId": self.main_server_id
+        }
         self.sdk = OktaAISDK(sdk_config)
         
         # Cache for per-server SDK instances
