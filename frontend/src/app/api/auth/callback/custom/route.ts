@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 /**
  * Custom Authorization Server OAuth Callback Handler
  * 
