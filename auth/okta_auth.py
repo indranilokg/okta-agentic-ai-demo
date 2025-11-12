@@ -102,14 +102,14 @@ class OktaAuth:
         
         # Default SDK config (for main server operations)
         if not all([self.okta_domain, self.client_id, self.client_secret]):
-            logger.error(f"Missing SDK config: okta_domain={self.okta_domain}, client_id={self.client_id}, client_secret={self.client_secret is not None}")
+            logger.error(f"Missing SDK config: oktaDomain={self.okta_domain}, clientId={self.client_id}, clientSecret={self.client_secret is not None}")
             raise ValueError("Missing required Okta configuration for SDK initialization")
         
         sdk_config = OktaAIConfig(
-            okta_domain=self.okta_domain,
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            authorization_server_id=self.main_server_id
+            oktaDomain=self.okta_domain,
+            clientId=self.client_id,
+            clientSecret=self.client_secret,
+            authorizationServerId=self.main_server_id
         )
         self.sdk = OktaAISDK(sdk_config)
         
