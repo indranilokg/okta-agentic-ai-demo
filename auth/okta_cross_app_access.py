@@ -61,24 +61,24 @@ class OktaCrossAppAccessManager:
                 # Uses JWT bearer assertion with agent credentials
                 # Note: authorization_server_id is "default" because we POST to /oauth2/v1/token
                 self.main_config = OktaAIConfig(
-                    okta_domain=self.okta_domain,
-                    client_id=agent_id.strip(),  # Required by SDK, actual auth uses JWT bearer
-                    client_secret="",  # Not used with JWT bearer
-                    authorization_server_id="default",  # POST to /oauth2/v1/token (default auth server)
-                    principal_id=agent_id.strip(),  # Service account for JWT assertion
-                    private_jwk=agent_private_key  # Key for signing JWT
+                    oktaDomain=self.okta_domain,
+                    clientId=agent_id.strip(),  # Required by SDK, actual auth uses JWT bearer
+                    clientSecret="",  # Not used with JWT bearer
+                    authorizationServerId="default",  # POST to /oauth2/v1/token (default auth server)
+                    principalId=agent_id.strip(),  # Service account for JWT assertion
+                    privateJWK=agent_private_key  # Key for signing JWT
                 )
                 logger.info(" Main config loaded for ID-JAG exchange (JWT Bearer)")
                 
                 # STEP 3 Config: ID-JAG → MCP auth server token exchange
                 # Uses JWT bearer assertion with agent credentials
                 self.mcp_config = OktaAIConfig(
-                    okta_domain=self.okta_domain,
-                    client_id=agent_id.strip(),  # Required by SDK, actual auth uses JWT bearer
-                    client_secret="",  # Not used with JWT bearer
-                    authorization_server_id=os.getenv("OKTA_EMPLOYEE_MCP_AUTHORIZATION_SERVER_ID", "employee-mcp-server").strip(),
-                    principal_id=agent_id.strip(),  # Service account for JWT assertion
-                    private_jwk=agent_private_key  # Key for signing JWT
+                    oktaDomain=self.okta_domain,
+                    clientId=agent_id.strip(),  # Required by SDK, actual auth uses JWT bearer
+                    clientSecret="",  # Not used with JWT bearer
+                    authorizationServerId=os.getenv("OKTA_EMPLOYEE_MCP_AUTHORIZATION_SERVER_ID", "employee-mcp-server").strip(),
+                    principalId=agent_id.strip(),  # Service account for JWT assertion
+                    privateJWK=agent_private_key  # Key for signing JWT
                 )
                 logger.info(" MCP config loaded for MCP token exchange (JWT Bearer)")
             except json.JSONDecodeError as e:

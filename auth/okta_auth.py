@@ -105,12 +105,12 @@ class OktaAuth:
             logger.error(f"Missing SDK config: okta_domain={self.okta_domain}, client_id={self.client_id}, client_secret={self.client_secret is not None}")
             raise ValueError("Missing required Okta configuration for SDK initialization")
         
-        # Create OktaAIConfig object with snake_case field names
+        # Create OktaAIConfig object with camelCase field names (as expected by published SDK)
         sdk_config = OktaAIConfig(
-            okta_domain=self.okta_domain,
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            authorization_server_id=self.main_server_id
+            oktaDomain=self.okta_domain,
+            clientId=self.client_id,
+            clientSecret=self.client_secret,
+            authorizationServerId=self.main_server_id
         )
         self.sdk = OktaAISDK(sdk_config)
         
@@ -262,10 +262,10 @@ class OktaAuth:
         cache_key = f"{authorization_server_id}:{client_id}"
         if cache_key not in self._server_sdks:
             sdk_config = OktaAIConfig(
-                okta_domain=self.okta_domain,
-                client_id=client_id,
-                client_secret=client_secret,
-                authorization_server_id=authorization_server_id
+                oktaDomain=self.okta_domain,
+                clientId=client_id,
+                clientSecret=client_secret,
+                authorizationServerId=authorization_server_id
             )
             self._server_sdks[cache_key] = OktaAISDK(sdk_config)
         return self._server_sdks[cache_key]
