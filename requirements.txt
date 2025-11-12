@@ -15,4 +15,4 @@ auth0-ai-langchain==0.2.0
 openfga-sdk==0.9.7
 langchain-pinecone==0.2.12
 okta-jwt-verifier>=0.2.3
-okta-ai-sdk-proto>=1.0.1
+okta-ai-sdk-proto==1.0.1
