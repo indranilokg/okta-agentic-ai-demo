@@ -66,11 +66,24 @@ function clearAllCookies(response: NextResponse) {
   const allCookies = cookieStore.getAll();
   console.log('[Signout] All cookies found:', allCookies.map(c => c.name));
   
-  // Clear all NextAuth related cookies
+  // Clear all NextAuth related cookies with multiple attempts to ensure deletion
   for (const cookie of allCookies) {
     if (cookie.name.includes('next-auth') || cookie.name.includes('nextauth')) {
       console.log('[Signout] Clearing cookie:', cookie.name);
+      
+      // Try multiple ways to clear the cookie
       cookieStore.delete(cookie.name);
+      
+      // Method 1: Set to empty with max-age=0
+      response.cookies.set(cookie.name, '', {
+        maxAge: 0,
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      });
+      
+      // Method 2: Set to empty with past date
       response.cookies.set(cookie.name, '', {
         expires: new Date(0),
         path: '/',
@@ -78,6 +91,7 @@ function clearAllCookies(response: NextResponse) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
       });
+      
       response.cookies.delete(cookie.name);
     }
   }
