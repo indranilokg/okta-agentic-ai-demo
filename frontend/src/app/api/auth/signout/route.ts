@@ -123,18 +123,20 @@ export async function GET(request: Request) {
     console.log('[Signout] Config check - oktaBaseUrl present:', !!oktaBaseUrl, 'redirectToOkta:', redirectToOkta, 'hasToken:', !!idToken);
     
     // Build redirect URL
-    let redirectUrl = baseUrl;
+    let finalRedirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
       // Okta logout endpoint - it will then redirect to post_logout_redirect_uri
-      const postLogoutRedirectUri = `${baseUrl}/?logout=success`;
-      redirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      const postLogoutRedirectUri = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(`${baseUrl}/?logout=success`)}`;
+      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
       console.log('[Signout] Redirecting to Okta logout, will return to:', postLogoutRedirectUri);
     } else {
-      console.log('[Signout] Redirecting to home');
+      // Redirect through session refresh to clear client-side cache
+      finalRedirectUrl = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(baseUrl)}`;
+      console.log('[Signout] Redirecting through session-refresh to home');
     }
     
     // Create response with redirect
-    const response = NextResponse.redirect(redirectUrl, { status: 302 });
+    const response = NextResponse.redirect(finalRedirectUrl, { status: 302 });
     
     // Clear all cookies before returning
     return clearAllCookies(response);
@@ -166,15 +168,18 @@ export async function POST(request: Request) {
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     
     // Build redirect URL
-    let redirectUrl = baseUrl;
+    let finalRedirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
-      const postLogoutRedirectUri = `${baseUrl}/?logout=success`;
-      redirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      const postLogoutRedirectUri = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(`${baseUrl}/?logout=success`)}`;
+      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
       console.log('[Signout] POST: Redirect to Okta logout');
+    } else {
+      finalRedirectUrl = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(baseUrl)}`;
+      console.log('[Signout] POST: Redirecting through session-refresh');
     }
     
     // Create response with redirect
-    const response = NextResponse.redirect(redirectUrl, { status: 302 });
+    const response = NextResponse.redirect(finalRedirectUrl, { status: 302 });
     
     // Clear all cookies before returning
     return clearAllCookies(response);
