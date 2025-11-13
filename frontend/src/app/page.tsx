@@ -476,17 +476,11 @@ export default function StreamwardAssistant() {
       callbackUrl: '/',
       redirect: false 
     }).then(() => {
-      console.log('[LOGOUT] NextAuth signOut completed');
+      console.log('[LOGOUT] NextAuth signOut completed - cookies cleared');
       
-      // Force a page reload to clear any client-side session cache
-      // This ensures useSession() returns null immediately
-      console.log('[LOGOUT] Reloading page to clear session cache');
-      window.location.reload();
-      
-      // SECOND: Then redirect to Okta logout
+      // SECOND: Redirect to Okta logout
       // Do NOT include post_logout_redirect_uri - it causes "canceled" status
       // Just use id_token_hint like the working okta-cross-app-access-demo
-      // (This code won't execute due to reload, but kept for clarity)
       if (clientId && idToken) {
         const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}`;
         console.log('[LOGOUT] Redirecting to Okta logout with id_token_hint');
