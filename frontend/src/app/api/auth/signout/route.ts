@@ -38,21 +38,51 @@ function clearAllCookies(response: NextResponse) {
   ];
   
   // Clear NextAuth cookies (including JWT token)
+  // Note: Cookie names may have dots or dashes - try both variations
   const jwtCookieNames = [
     'next-auth.session-token',
     '__Secure-next-auth.session-token',
     '__Host-next-auth.session-token',
+    '__Secure.next-auth.session-token', // With dots
+    '__Host.next-auth.session-token',    // With dots
     'next-auth.csrf-token',
     '__Secure-next-auth.csrf-token',
     '__Host-next-auth.csrf-token',
+    '__Secure.next-auth.csrf-token',     // With dots
+    '__Host.next-auth.csrf-token',       // With dots
     'next-auth.callback-url',
     '__Secure-next-auth.callback-url',
     '__Host-next-auth.callback-url',
-    'next-auth', // Also clear the JWT token cookie name variations
+    '__Secure.next-auth.callback-url',   // With dots
+    '__Host.next-auth.callback-url',     // With dots
+    'next-auth',
     '__Secure-next-auth',
     '__Host-next-auth',
+    '__Secure.next-auth',                // With dots
+    '__Host.next-auth',                  // With dots
   ];
   
+  // Get all cookies to ensure we catch all variations
+  const allCookies = cookieStore.getAll();
+  console.log('[Signout] All cookies found:', allCookies.map(c => c.name));
+  
+  // Clear all NextAuth related cookies
+  for (const cookie of allCookies) {
+    if (cookie.name.includes('next-auth') || cookie.name.includes('nextauth')) {
+      console.log('[Signout] Clearing cookie:', cookie.name);
+      cookieStore.delete(cookie.name);
+      response.cookies.set(cookie.name, '', {
+        expires: new Date(0),
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      });
+      response.cookies.delete(cookie.name);
+    }
+  }
+  
+  // Also explicitly clear known cookie names
   for (const cookieName of jwtCookieNames) {
     cookieStore.delete(cookieName);
     response.cookies.set(cookieName, '', {
