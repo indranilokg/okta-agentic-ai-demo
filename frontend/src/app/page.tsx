@@ -100,11 +100,7 @@ export default function StreamwardAssistant() {
   
   // Automatically trigger custom server OAuth flow after org auth succeeds
   useEffect(() => {
-    // Check if session is actually valid (has idToken)
-    // If session exists but has no idToken, user was just logged out
-    const hasValidSession = status === 'authenticated' && session && session.idToken;
-    
-    if (hasValidSession) {
+    if (status === 'authenticated' && session) {
       // Check if we just logged out - don't trigger custom auth
       const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
       const urlParams = new URLSearchParams(window.location.search);
@@ -126,10 +122,6 @@ export default function StreamwardAssistant() {
       
       // Check if custom token is needed and trigger OAuth flow
       checkAndTriggerCustomAuth(!!session.customAccessToken);
-    } else if (status === 'authenticated' && session && !session.idToken) {
-      // Session exists but no idToken - user was logged out
-      console.log('[CUSTOM_AUTH] Session found but no idToken - user was logged out');
-      sessionStorage.setItem('just-logged-out', 'true');
     }
   }, [status, session]);
   

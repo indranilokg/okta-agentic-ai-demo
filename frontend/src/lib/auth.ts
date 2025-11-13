@@ -78,6 +78,12 @@ export const authOptions = {
       return token;
     },
     async session({ session, token }: any) {
+      // If no idToken, user is logged out - return null to clear session
+      if (!token.idToken) {
+        console.debug('[Session] No idToken in token - user is logged out');
+        return null;
+      }
+      
       // Store only what's needed:
       // - Org ID token (for frontend display)
       // - Custom access token (for token exchange)
