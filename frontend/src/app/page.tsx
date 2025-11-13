@@ -105,17 +105,17 @@ export default function StreamwardAssistant() {
       const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
       const urlParams = new URLSearchParams(window.location.search);
       const fromLogout = urlParams.get('from_logout') === 'true';
+      const logoutSuccess = urlParams.get('logout') === 'success';
       
-      // Only skip if we're actually coming from logout AND don't have custom token
-      // If user has custom token, they're logged in, so clear the flag
-      if (justLoggedOut || fromLogout) {
-        if (session.customAccessToken) {
-          // User has custom token, so they're properly logged in - clear flag
+      // Skip custom auth if user just logged out
+      if (justLoggedOut || fromLogout || logoutSuccess) {
+        if (session.customAccessToken && !logoutSuccess) {
+          // User has custom token and NOT coming from logout - they're properly logged in
           console.log('[CUSTOM_AUTH] User has custom token - clearing logout flag');
           sessionStorage.removeItem('just-logged-out');
         } else {
-          // No custom token and coming from logout - skip for now
-          console.log('[CUSTOM_AUTH] Skipping - just logged out, no custom token yet');
+          // No custom token and coming from logout - skip completely
+          console.log('[CUSTOM_AUTH] Skipping - user just logged out');
           return;
         }
       }

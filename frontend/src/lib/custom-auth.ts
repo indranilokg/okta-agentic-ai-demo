@@ -144,6 +144,13 @@ export function checkAndTriggerCustomAuth(hasCustomToken: boolean): void {
   const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
   const urlParams = new URLSearchParams(window.location.search);
   const fromLogout = urlParams.get('from_logout') === 'true';
+  const logoutSuccess = urlParams.get('logout') === 'success';
+  
+  // Skip if user just logged out (from Okta logout callback)
+  if (logoutSuccess) {
+    console.log('🚫 [Custom Auth] Skipping - user just completed Okta logout');
+    return;
+  }
   
   // Only skip if actively coming from logout flow
   // Use a time-based check: if flag is older than 3 seconds, assume it's stale
