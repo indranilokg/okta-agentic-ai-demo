@@ -168,11 +168,18 @@ export async function GET(request: Request) {
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
-    if (redirectToOkta && oktaBaseUrl && idToken) {
-      // Always use org endpoint (/oauth2/v1/logout) for logout
-      // The org ID token is what we stored from the org authentication
+    if (redirectToOkta && oktaBaseUrl) {
+      // Logout from Okta org endpoint
+      // Okta will use session cookies to identify the user, so we don't need id_token_hint
+      // This avoids long URL issues that can cause "canceled" requests
       const postLogoutRedirectUri = `${baseUrl}/logout`;
-      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      
+      // If we have the ID token, add it as a hint (but it's not required)
+      if (idToken) {
+        finalRedirectUrl += `&id_token_hint=${encodeURIComponent(idToken)}`;
+      }
+      
       console.log('[Signout] Redirecting to Okta org logout, will return to:', postLogoutRedirectUri);
     } else {
       // Redirect to logout page to ensure session is cleared properly
@@ -214,10 +221,17 @@ export async function POST(request: Request) {
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
-    if (redirectToOkta && oktaBaseUrl && idToken) {
-      // Always use org endpoint (/oauth2/v1/logout) for logout
+    if (redirectToOkta && oktaBaseUrl) {
+      // Logout from Okta org endpoint
+      // Okta will use session cookies to identify the user
       const postLogoutRedirectUri = `${baseUrl}/logout`;
-      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      
+      // If we have the ID token, add it as a hint (optional)
+      if (idToken) {
+        finalRedirectUrl += `&id_token_hint=${encodeURIComponent(idToken)}`;
+      }
+      
       console.log('[Signout] POST: Redirect to Okta org logout');
     } else {
       finalRedirectUrl = `${baseUrl}/logout`;
