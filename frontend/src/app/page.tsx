@@ -462,14 +462,34 @@ export default function StreamwardAssistant() {
         redirect: false
       });
       
-      // Pass ID token to signout API via query param if available
-      // This ensures we have it even after session is cleared
-      const idTokenParam = idToken ? `&id_token=${encodeURIComponent(idToken)}` : '';
+      // Call signout API using POST with ID token in body to avoid URL length issues
+      // This is more reliable than passing large JWTs in query parameters
+      const signoutResponse = await fetch('/api/auth/signout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          redirect_to_okta: true,
+          id_token: idToken || undefined,
+        }),
+      });
       
-      // Then call our signout API to clear all cookies and optionally redirect to Okta
-      // This ensures cookies are cleared server-side
-      // The just-logged-out flag will persist across redirects
-      window.location.href = `/api/auth/signout?redirect_to_okta=true${idTokenParam}`;
+      if (signoutResponse.ok) {
+        // Check if response includes a redirect URL
+        const redirectUrl = signoutResponse.headers.get('x-redirect-url');
+        if (redirectUrl) {
+          window.location.href = redirectUrl;
+        } else {
+          // Wait a bit for cookies to be set before redirect
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 100);
+        }
+      } else {
+        console.error(`[LOGOUT] Signout API returned ${signoutResponse.status}`);
+        window.location.href = '/';
+      }
     } catch (error) {
       console.error(`[LOGOUT] ERROR: ${error instanceof Error ? error.message : String(error)}`);
       // Even on error, redirect to home page with logout flag
