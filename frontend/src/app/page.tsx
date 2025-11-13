@@ -451,6 +451,9 @@ export default function StreamwardAssistant() {
 
   const handleLogout = async () => {
     try {
+      console.log('[LOGOUT] ===== LOGOUT HANDLER STARTED =====');
+      console.log('[LOGOUT] NEW SIMPLIFIED CODE PATH');
+      
       // Set logout flag to prevent custom auth from triggering
       // Store timestamp so we can detect stale flags
       sessionStorage.setItem('just-logged-out', 'true');
