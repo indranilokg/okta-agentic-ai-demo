@@ -466,9 +466,16 @@ export default function StreamwardAssistant() {
       // This avoids putting the full JWT in the URL (which can exceed URL length limits)
       if (idToken) {
         // Set a temporary cookie that will be cleared by the signout endpoint
-        document.cookie = `temp-logout-id-token=${encodeURIComponent(idToken)}; path=/; max-age=60; SameSite=Lax`;
+        // Use Secure flag in production, Lax SameSite for cross-site handling
+        const isProduction = process.env.NODE_ENV === 'production';
+        const secureFlagStr = isProduction ? '; Secure' : '';
+        document.cookie = `temp-logout-id-token=${encodeURIComponent(idToken)}; path=/; max-age=60; SameSite=Lax${secureFlagStr}`;
         console.log('[LOGOUT] Stored ID token in temporary cookie');
       }
+      
+      // Add a small delay to ensure cookie is written before redirect
+      // This prevents race conditions between cookie setting and redirect
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       // Redirect to signout endpoint - it will read the ID token from the cookie
       // and handle all cleanup including Okta redirect

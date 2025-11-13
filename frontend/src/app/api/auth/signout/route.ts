@@ -133,9 +133,12 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    console.log('[Signout API] GET request started');
+    
     // Check if we need to redirect to Okta logout
     const { searchParams } = new URL(request.url);
     const redirectToOkta = searchParams.get('redirect_to_okta') === 'true';
+    console.log('[Signout API] Redirect to Okta requested:', redirectToOkta);
     
     // Get ID token from query param (passed from client before session was cleared)
     let idTokenToUse = searchParams.get('id_token');
@@ -147,7 +150,9 @@ export async function GET(request: Request) {
     const tempTokenCookie = cookieStore.get('temp-logout-id-token');
     if (tempTokenCookie?.value) {
       idTokenToUse = tempTokenCookie.value;
-      console.log('[Signout API] Got ID token from temporary logout cookie');
+      console.log('[Signout API] Got ID token from temporary logout cookie (length: ' + idTokenToUse.length + ')');
+    } else {
+      console.log('[Signout API] No temporary logout cookie found');
     }
     
     // 2. Try to get from session
@@ -171,26 +176,28 @@ export async function GET(request: Request) {
     const oktaBaseUrl = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL;
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     
-    console.log('[Signout API] GET request - redirectToOkta:', redirectToOkta, 'hasIdToken:', !!idTokenToUse);
+    console.log('[Signout API] Final check - redirectToOkta:', redirectToOkta, 'hasIdToken:', !!idTokenToUse, 'oktaBaseUrl:', !!oktaBaseUrl);
+    
+    // Clear all cookies first, then prepare redirect
+    const response = clearAllCookies(() => NextResponse.json({ success: true }));
     
     if (redirectToOkta && oktaBaseUrl && idTokenToUse) {
       // Use ID token hint for logout (required by Okta)
       const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idTokenToUse)}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
-      console.log('[Signout API] Redirecting to Okta logout with ID token');
-      // Clear cookies and redirect to Okta
-      const response = clearAllCookies(() => NextResponse.redirect(oktaLogoutUrl, { status: 302 }));
-      // Also clear the temporary logout token cookie
+      console.log('[Signout API] Redirecting to Okta logout URL');
+      // Clear the temporary logout token cookie
       response.cookies.delete('temp-logout-id-token');
-      return response;
+      // Use redirect with explicit status
+      return NextResponse.redirect(oktaLogoutUrl, { status: 302 });
     } else if (redirectToOkta && !idTokenToUse) {
       // If no ID token available, skip Okta logout and just clear local cookies
-      // Okta logout requires id_token_hint - client_id alone doesn't work
-      console.log('[Signout API] No ID token available - skipping Okta logout, clearing local cookies only');
-      return clearAllCookies(() => NextResponse.redirect(baseUrl, { status: 302 }));
+      console.log('[Signout API] No ID token - redirecting to home after clearing cookies');
+      return NextResponse.redirect(baseUrl, { status: 302 });
     }
     
-    // If no Okta redirect, redirect to home with cookies cleared
-    return clearAllCookies(() => NextResponse.redirect(baseUrl, { status: 302 }));
+    // Default: redirect to home with cookies cleared
+    console.log('[Signout API] Default redirect to home');
+    return NextResponse.redirect(baseUrl, { status: 302 });
   } catch (error) {
     console.error('[Signout API] Error:', error);
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
