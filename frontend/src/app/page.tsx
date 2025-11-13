@@ -452,49 +452,39 @@ export default function StreamwardAssistant() {
   const handleLogout = async () => {
     try {
       console.log('[LOGOUT] ===== LOGOUT HANDLER STARTED =====');
-      console.log('[LOGOUT] NEW SIMPLIFIED CODE PATH');
+      console.log('[LOGOUT] ULTRA-SIMPLE CODE PATH - NO API CALLS');
+      
+      // Get ID token FIRST before doing anything else
+      const idToken = session?.idToken;
+      console.log(`[LOGOUT] Got idToken=${!!idToken}`);
       
       // Set logout flag to prevent custom auth from triggering
-      // Store timestamp so we can detect stale flags
       sessionStorage.setItem('just-logged-out', 'true');
       sessionStorage.setItem('just-logged-out-time', Date.now().toString());
       
-      // IMPORTANT: Get ID token from session BEFORE calling signOut (session will be cleared)
-      const idToken = session?.idToken;
-      console.log(`[LOGOUT] Starting logout with idToken=${!!idToken}`);
-      
-      // Clear client-side storage first
+      // Clear client-side storage
       sessionStorage.removeItem('custom-auth-initiated');
       sessionStorage.removeItem('custom-auth-state');
       sessionStorage.removeItem('custom-auth-verifier');
       console.debug('[LOGOUT] Cleared sessionStorage');
       
-      // Sign out from NextAuth - this clears the NextAuth session cookie
-      // Use redirect: false so we can handle the Okta logout redirect ourselves
-      await signOut({ 
-        callbackUrl: window.location.origin,
-        redirect: false
-      });
-      
-      // Simple direct logout to Okta - no complex API coordination
-      // This is the same approach used in okta-cross-app-access-demo and it works!
-      console.log('[LOGOUT] Redirecting directly to Okta logout');
-      
       const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://your-domain.okta.com';
       
-      // Use OIDC logout with id_token_hint (WITHOUT post_logout_redirect_uri which causes issues)
-      // NOTE: Do NOT encodeURIComponent the idToken - Okta expects it raw
+      // SKIP calling signOut() - just go directly to Okta logout
+      // This avoids any NextAuth API calls
+      console.log('[LOGOUT] Redirecting DIRECTLY to Okta logout (NO signOut call)');
+      
       if (idToken) {
+        // Use OIDC logout with id_token_hint
         const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}`;
-        console.log('[LOGOUT] Using Okta logout URL with id_token_hint');
+        console.log('[LOGOUT] Okta logout URL:', oktaLogoutUrl.substring(0, 100) + '...');
         window.location.href = oktaLogoutUrl;
       } else {
-        console.log('[LOGOUT] No idToken, redirecting to home');
+        console.log('[LOGOUT] No idToken, going home');
         window.location.href = '/';
       }
     } catch (error) {
       console.error(`[LOGOUT] ERROR: ${error instanceof Error ? error.message : String(error)}`);
-      // Even on error, redirect to home page with logout flag
       sessionStorage.setItem('just-logged-out', 'true');
       window.location.href = '/';
     }
