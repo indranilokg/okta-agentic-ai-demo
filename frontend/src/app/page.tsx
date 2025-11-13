@@ -54,6 +54,17 @@ export default function StreamwardAssistant() {
     const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
     const urlParams = new URLSearchParams(window.location.search);
     const fromLogout = urlParams.get('from_logout') === 'true';
+    const logoutSuccess = urlParams.get('logout') === 'success';
+    
+    // Handle successful logout redirect from Okta
+    if (logoutSuccess) {
+      console.log('[PAGE] Logout success parameter detected');
+      sessionStorage.setItem('just-logged-out', 'true');
+      // Clean up URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+      return;
+    }
     
     // If user is authenticated, clear the logout flag (fresh login)
     if (status === 'authenticated' && session && justLoggedOut) {

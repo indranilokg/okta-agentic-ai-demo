@@ -110,10 +110,12 @@ export async function GET(request: Request) {
     // Build redirect URL
     let redirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
-      redirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
-      console.log('[Signout] Redirect to Okta logout');
+      // Okta logout endpoint - it will then redirect to post_logout_redirect_uri
+      const postLogoutRedirectUri = `${baseUrl}/?logout=success`;
+      redirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      console.log('[Signout] Redirecting to Okta logout, will return to:', postLogoutRedirectUri);
     } else {
-      console.log('[Signout] Redirect to home');
+      console.log('[Signout] Redirecting to home');
     }
     
     // Create response with redirect
@@ -151,7 +153,8 @@ export async function POST(request: Request) {
     // Build redirect URL
     let redirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
-      redirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
+      const postLogoutRedirectUri = `${baseUrl}/?logout=success`;
+      redirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
       console.log('[Signout] POST: Redirect to Okta logout');
     }
     
