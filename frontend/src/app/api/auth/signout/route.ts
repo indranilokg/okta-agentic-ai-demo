@@ -163,22 +163,17 @@ export async function GET(request: Request) {
     
     const oktaBaseUrl = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL;
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    // Get the custom authorization server ID for logout endpoint
-    const authServerId = process.env.NEXT_PUBLIC_OKTA_MAIN_SERVER_ID;
     
-    console.log('[Signout] Config check - oktaBaseUrl present:', !!oktaBaseUrl, 'authServerId present:', !!authServerId, 'redirectToOkta:', redirectToOkta, 'hasToken:', !!idToken);
+    console.log('[Signout] Config check - oktaBaseUrl present:', !!oktaBaseUrl, 'redirectToOkta:', redirectToOkta, 'hasToken:', !!idToken);
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
-      // Use custom authorization server logout endpoint if available, otherwise use default
-      const logoutPath = authServerId 
-        ? `/oauth2/${authServerId}/v1/logout`
-        : `/oauth2/v1/logout`;
-      
+      // Always use org endpoint (/oauth2/v1/logout) for logout
+      // The org ID token is what we stored from the org authentication
       const postLogoutRedirectUri = `${baseUrl}/logout`;
-      finalRedirectUrl = `${oktaBaseUrl}${logoutPath}?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
-      console.log('[Signout] Redirecting to Okta logout at:', logoutPath, 'will return to:', postLogoutRedirectUri);
+      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      console.log('[Signout] Redirecting to Okta org logout, will return to:', postLogoutRedirectUri);
     } else {
       // Redirect to logout page to ensure session is cleared properly
       finalRedirectUrl = `${baseUrl}/logout`;
@@ -216,19 +211,14 @@ export async function POST(request: Request) {
     
     const oktaBaseUrl = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL;
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    const authServerId = process.env.NEXT_PUBLIC_OKTA_MAIN_SERVER_ID;
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
-      // Use custom authorization server logout endpoint if available
-      const logoutPath = authServerId 
-        ? `/oauth2/${authServerId}/v1/logout`
-        : `/oauth2/v1/logout`;
-      
+      // Always use org endpoint (/oauth2/v1/logout) for logout
       const postLogoutRedirectUri = `${baseUrl}/logout`;
-      finalRedirectUrl = `${oktaBaseUrl}${logoutPath}?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
-      console.log('[Signout] POST: Redirect to Okta logout at:', logoutPath);
+      finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+      console.log('[Signout] POST: Redirect to Okta org logout');
     } else {
       finalRedirectUrl = `${baseUrl}/logout`;
       console.log('[Signout] POST: Redirecting to logout page');
