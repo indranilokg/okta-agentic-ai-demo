@@ -168,10 +168,12 @@ export async function GET(request: Request) {
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
+    let shouldClearCookies = true;
+    
     if (redirectToOkta && oktaBaseUrl) {
       // Logout from Okta org endpoint
-      // Okta will use session cookies to identify the user, so we don't need id_token_hint
-      // This avoids long URL issues that can cause "canceled" requests
+      // Okta will use session cookies to identify the user, so we need to keep them for this request!
+      // The cookies will be cleared by Okta's logout response, or by the /logout page when we return
       const postLogoutRedirectUri = `${baseUrl}/logout`;
       finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
       
@@ -180,6 +182,10 @@ export async function GET(request: Request) {
         finalRedirectUrl += `&id_token_hint=${encodeURIComponent(idToken)}`;
       }
       
+      // DO NOT clear cookies yet - Okta needs them to verify the logout request!
+      // The browser will include them automatically in the redirect to Okta
+      // After Okta logout, we'll redirect to /logout which will clear any remaining cookies
+      shouldClearCookies = false;
       console.log('[Signout] Redirecting to Okta org logout, will return to:', postLogoutRedirectUri);
     } else {
       // Redirect to logout page to ensure session is cleared properly
@@ -190,8 +196,12 @@ export async function GET(request: Request) {
     // Create response with redirect
     const response = NextResponse.redirect(finalRedirectUrl, { status: 302 });
     
-    // Clear all cookies before returning
-    return clearAllCookies(response);
+    // Only clear cookies if not redirecting to Okta
+    if (shouldClearCookies) {
+      return clearAllCookies(response);
+    }
+    
+    return response;
   } catch (error) {
     console.error('[Signout] Exception:', error instanceof Error ? error.message : String(error));
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -221,6 +231,8 @@ export async function POST(request: Request) {
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
+    let shouldClearCookies = true;
+    
     if (redirectToOkta && oktaBaseUrl) {
       // Logout from Okta org endpoint
       // Okta will use session cookies to identify the user
@@ -232,6 +244,8 @@ export async function POST(request: Request) {
         finalRedirectUrl += `&id_token_hint=${encodeURIComponent(idToken)}`;
       }
       
+      // DO NOT clear cookies yet - Okta needs them!
+      shouldClearCookies = false;
       console.log('[Signout] POST: Redirect to Okta org logout');
     } else {
       finalRedirectUrl = `${baseUrl}/logout`;
@@ -241,8 +255,12 @@ export async function POST(request: Request) {
     // Create response with redirect
     const response = NextResponse.redirect(finalRedirectUrl, { status: 302 });
     
-    // Clear all cookies before returning
-    return clearAllCookies(response);
+    // Only clear cookies if not redirecting to Okta
+    if (shouldClearCookies) {
+      return clearAllCookies(response);
+    }
+    
+    return response;
   } catch (error) {
     console.error('[Signout] POST Exception:', error instanceof Error ? error.message : String(error));
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
