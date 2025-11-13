@@ -178,26 +178,60 @@ export async function GET(request: Request) {
     
     console.log('[Signout API] Final check - redirectToOkta:', redirectToOkta, 'hasIdToken:', !!idTokenToUse, 'oktaBaseUrl:', !!oktaBaseUrl);
     
-    // Clear all cookies first, then prepare redirect
-    const response = clearAllCookies(() => NextResponse.json({ success: true }));
+    // Clear all cookies
+    const response = clearAllCookies(() => NextResponse.json({ 
+      success: true,
+      redirectUrl: null,
+    }));
     
+    // Clear the temporary logout token cookie
+    response.cookies.delete('temp-logout-id-token');
+    
+    // If redirect to Okta is requested, return the URL as JSON instead of redirecting server-side
+    // This avoids Vercel timeout issues with external redirects
     if (redirectToOkta && oktaBaseUrl && idTokenToUse) {
       // Use ID token hint for logout (required by Okta)
       const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idTokenToUse)}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
-      console.log('[Signout API] Redirecting to Okta logout URL');
-      // Clear the temporary logout token cookie
-      response.cookies.delete('temp-logout-id-token');
-      // Use redirect with explicit status
-      return NextResponse.redirect(oktaLogoutUrl, { status: 302 });
+      console.log('[Signout API] Returning Okta logout URL to client');
+      
+      const jsonResponse = NextResponse.json({
+        success: true,
+        redirectUrl: oktaLogoutUrl,
+      });
+      
+      // Copy cookies from the clearAllCookies response
+      for (const [name, value] of response.cookies.getSetCookie()) {
+        jsonResponse.cookies.set(name, value);
+      }
+      
+      return jsonResponse;
     } else if (redirectToOkta && !idTokenToUse) {
-      // If no ID token available, skip Okta logout and just clear local cookies
-      console.log('[Signout API] No ID token - redirecting to home after clearing cookies');
-      return NextResponse.redirect(baseUrl, { status: 302 });
+      console.log('[Signout API] No ID token - returning home URL to client');
+      
+      const jsonResponse = NextResponse.json({
+        success: true,
+        redirectUrl: baseUrl,
+      });
+      
+      for (const [name, value] of response.cookies.getSetCookie()) {
+        jsonResponse.cookies.set(name, value);
+      }
+      
+      return jsonResponse;
     }
     
-    // Default: redirect to home with cookies cleared
-    console.log('[Signout API] Default redirect to home');
-    return NextResponse.redirect(baseUrl, { status: 302 });
+    // Default: return home URL
+    console.log('[Signout API] Returning home URL to client');
+    const jsonResponse = NextResponse.json({
+      success: true,
+      redirectUrl: baseUrl,
+    });
+    
+    for (const [name, value] of response.cookies.getSetCookie()) {
+      jsonResponse.cookies.set(name, value);
+    }
+    
+    return jsonResponse;
   } catch (error) {
     console.error('[Signout API] Error:', error);
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';

@@ -477,10 +477,38 @@ export default function StreamwardAssistant() {
       // This prevents race conditions between cookie setting and redirect
       await new Promise(resolve => setTimeout(resolve, 50));
       
-      // Redirect to signout endpoint - it will read the ID token from the cookie
-      // and handle all cleanup including Okta redirect
-      console.log('[LOGOUT] Redirecting to signout endpoint');
-      window.location.href = '/api/auth/signout?redirect_to_okta=true';
+      // Call signout endpoint to clear cookies and get redirect URL
+      // The server returns the redirect URL as JSON instead of redirecting,
+      // which avoids Vercel timeout issues with external redirects
+      console.log('[LOGOUT] Calling signout endpoint');
+      try {
+        const response = await fetch('/api/auth/signout?redirect_to_okta=true', {
+          method: 'GET',
+          credentials: 'include', // Include cookies in the request
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[LOGOUT] Signout successful, redirecting to:', data.redirectUrl ? data.redirectUrl.substring(0, 50) + '...' : data.redirectUrl);
+          
+          if (data.redirectUrl) {
+            // Navigate to the redirect URL (either Okta logout or home)
+            // Use a small delay to ensure all cookie operations complete
+            setTimeout(() => {
+              window.location.href = data.redirectUrl;
+            }, 100);
+          } else {
+            window.location.href = '/';
+          }
+        } else {
+          console.error(`[LOGOUT] Signout returned status ${response.status}`);
+          window.location.href = '/';
+        }
+      } catch (fetchError) {
+        console.error(`[LOGOUT] Fetch error: ${fetchError}`);
+        // Fallback: redirect to home
+        window.location.href = '/';
+      }
     } catch (error) {
       console.error(`[LOGOUT] ERROR: ${error instanceof Error ? error.message : String(error)}`);
       // Even on error, redirect to home page with logout flag
