@@ -140,20 +140,31 @@ export async function GET(request: Request) {
     // Get ID token from query param (passed from client before session was cleared)
     let idTokenToUse = searchParams.get('id_token');
     
-    // Also try to get from session (might still be available)
-    const session = await getServerSession(authOptions);
-    if (!idTokenToUse && session?.idToken) {
-      idTokenToUse = session.idToken;
-      console.log(' [Signout API] Got ID token from session');
+    // Try multiple sources for ID token to avoid URL length issues
+    const cookieStore = await cookies();
+    
+    // 1. First check for temporary cookie set by client (avoids URL length limits)
+    const tempTokenCookie = cookieStore.get('temp-logout-id-token');
+    if (tempTokenCookie?.value) {
+      idTokenToUse = tempTokenCookie.value;
+      console.log('[Signout API] Got ID token from temporary logout cookie');
     }
     
-    // Also check cookie as fallback
+    // 2. Try to get from session
     if (!idTokenToUse) {
-      const cookieStore = await cookies();
+      const session = await getServerSession(authOptions);
+      if (session?.idToken) {
+        idTokenToUse = session.idToken;
+        console.log('[Signout API] Got ID token from session');
+      }
+    }
+    
+    // 3. Check org-id-token cookie as fallback
+    if (!idTokenToUse) {
       const orgIdTokenCookie = cookieStore.get('org-id-token');
       if (orgIdTokenCookie?.value) {
         idTokenToUse = orgIdTokenCookie.value;
-        console.log(' [Signout API] Got ID token from cookie');
+        console.log('[Signout API] Got ID token from org-id-token cookie');
       }
     }
     
@@ -167,7 +178,10 @@ export async function GET(request: Request) {
       const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idTokenToUse)}&post_logout_redirect_uri=${encodeURIComponent(baseUrl)}`;
       console.log('[Signout API] Redirecting to Okta logout with ID token');
       // Clear cookies and redirect to Okta
-      return clearAllCookies(() => NextResponse.redirect(oktaLogoutUrl, { status: 302 }));
+      const response = clearAllCookies(() => NextResponse.redirect(oktaLogoutUrl, { status: 302 }));
+      // Also clear the temporary logout token cookie
+      response.cookies.delete('temp-logout-id-token');
+      return response;
     } else if (redirectToOkta && !idTokenToUse) {
       // If no ID token available, skip Okta logout and just clear local cookies
       // Okta logout requires id_token_hint - client_id alone doesn't work

@@ -462,34 +462,18 @@ export default function StreamwardAssistant() {
         redirect: false
       });
       
-      // Call signout API using POST with ID token in body to avoid URL length issues
-      // This is more reliable than passing large JWTs in query parameters
-      const signoutResponse = await fetch('/api/auth/signout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          redirect_to_okta: true,
-          id_token: idToken || undefined,
-        }),
-      });
-      
-      if (signoutResponse.ok) {
-        // Check if response includes a redirect URL
-        const redirectUrl = signoutResponse.headers.get('x-redirect-url');
-        if (redirectUrl) {
-          window.location.href = redirectUrl;
-        } else {
-          // Wait a bit for cookies to be set before redirect
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 100);
-        }
-      } else {
-        console.error(`[LOGOUT] Signout API returned ${signoutResponse.status}`);
-        window.location.href = '/';
+      // Store ID token temporarily in a client-side cookie so the signout endpoint can access it
+      // This avoids putting the full JWT in the URL (which can exceed URL length limits)
+      if (idToken) {
+        // Set a temporary cookie that will be cleared by the signout endpoint
+        document.cookie = `temp-logout-id-token=${encodeURIComponent(idToken)}; path=/; max-age=60; SameSite=Lax`;
+        console.log('[LOGOUT] Stored ID token in temporary cookie');
       }
+      
+      // Redirect to signout endpoint - it will read the ID token from the cookie
+      // and handle all cleanup including Okta redirect
+      console.log('[LOGOUT] Redirecting to signout endpoint');
+      window.location.href = '/api/auth/signout?redirect_to_okta=true';
     } catch (error) {
       console.error(`[LOGOUT] ERROR: ${error instanceof Error ? error.message : String(error)}`);
       // Even on error, redirect to home page with logout flag
