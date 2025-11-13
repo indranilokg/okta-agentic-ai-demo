@@ -488,39 +488,19 @@ export default function StreamwardAssistant() {
       // This prevents race conditions between cookie setting and redirect
       await new Promise(resolve => setTimeout(resolve, 50));
       
-      // Call signout endpoint to clear cookies and get redirect URL
-      // Use POST with redirect_to_okta in body to ensure query string is preserved
-      console.log('[LOGOUT] Calling signout endpoint');
-      try {
-        const response = await fetch('/api/auth/signout', {
-          method: 'POST',
-          credentials: 'include', // Include cookies in the request
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ redirectToOkta: true }),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('[LOGOUT] Signout successful, redirecting to:', data.redirectUrl ? data.redirectUrl.substring(0, 50) + '...' : data.redirectUrl);
-          
-          if (data.redirectUrl) {
-            // Navigate to the redirect URL (either Okta logout or home)
-            // Use a small delay to ensure all cookie operations complete
-            setTimeout(() => {
-              window.location.href = data.redirectUrl;
-            }, 100);
-          } else {
-            window.location.href = '/';
-          }
-        } else {
-          console.error(`[LOGOUT] Signout returned status ${response.status}`);
-          window.location.href = '/';
-        }
-      } catch (fetchError) {
-        console.error(`[LOGOUT] Fetch error: ${fetchError}`);
-        // Fallback: redirect to home
+      // Simple direct logout to Okta - no complex API coordination
+      // This is the same approach used in okta-cross-app-access-demo and it works!
+      console.log('[LOGOUT] Redirecting directly to Okta logout');
+      
+      const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://your-domain.okta.com';
+      
+      // Use OIDC logout with id_token_hint (WITHOUT post_logout_redirect_uri which causes issues)
+      if (idToken) {
+        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}`;
+        console.log('[LOGOUT] Using Okta logout URL with id_token_hint');
+        window.location.href = oktaLogoutUrl;
+      } else {
+        console.log('[LOGOUT] No idToken, redirecting to home');
         window.location.href = '/';
       }
     } catch (error) {
