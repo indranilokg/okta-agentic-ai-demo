@@ -170,13 +170,14 @@ export async function GET(request: Request) {
     let finalRedirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
       // Okta logout endpoint - it will then redirect to post_logout_redirect_uri
-      const postLogoutRedirectUri = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(`${baseUrl}/?logout=success`)}`;
+      // Redirect to logout page which will handle session cleanup
+      const postLogoutRedirectUri = `${baseUrl}/logout`;
       finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
       console.log('[Signout] Redirecting to Okta logout, will return to:', postLogoutRedirectUri);
     } else {
-      // Redirect through session refresh to clear client-side cache
-      finalRedirectUrl = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(baseUrl)}`;
-      console.log('[Signout] Redirecting through session-refresh to home');
+      // Redirect to logout page to ensure session is cleared properly
+      finalRedirectUrl = `${baseUrl}/logout`;
+      console.log('[Signout] Redirecting to logout page');
     }
     
     // Create response with redirect
@@ -214,12 +215,12 @@ export async function POST(request: Request) {
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
     if (redirectToOkta && oktaBaseUrl && idToken) {
-      const postLogoutRedirectUri = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(`${baseUrl}/?logout=success`)}`;
+      const postLogoutRedirectUri = `${baseUrl}/logout`;
       finalRedirectUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
       console.log('[Signout] POST: Redirect to Okta logout');
     } else {
-      finalRedirectUrl = `${baseUrl}/api/auth/session-refresh?redirect=${encodeURIComponent(baseUrl)}`;
-      console.log('[Signout] POST: Redirecting through session-refresh');
+      finalRedirectUrl = `${baseUrl}/logout`;
+      console.log('[Signout] POST: Redirecting to logout page');
     }
     
     // Create response with redirect
