@@ -449,45 +449,59 @@ export default function StreamwardAssistant() {
     "What's the dress code policy?"
   ];
 
-  const handleLogout = async () => {
-    try {
-      console.log('[LOGOUT] ===== LOGOUT HANDLER STARTED =====');
-      console.log('[LOGOUT] ULTRA-SIMPLE CODE PATH - NO API CALLS');
+  const handleLogout = () => {
+    console.log('[LOGOUT] ===== LOGOUT HANDLER STARTED =====');
+    
+    // Get ID token and client ID BEFORE signing out
+    const idToken = session?.idToken;
+    const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://your-domain.okta.com';
+    const clientId = process.env.NEXT_PUBLIC_OKTA_CLIENT_ID;
+    
+    console.log('[LOGOUT] idToken available:', !!idToken);
+    console.log('[LOGOUT] clientId available:', !!clientId);
+    
+    // Set logout flag to prevent custom auth from triggering
+    sessionStorage.setItem('just-logged-out', 'true');
+    sessionStorage.setItem('just-logged-out-time', Date.now().toString());
+    
+    // Clear client-side storage
+    sessionStorage.removeItem('custom-auth-initiated');
+    sessionStorage.removeItem('custom-auth-state');
+    sessionStorage.removeItem('custom-auth-verifier');
+    console.log('[LOGOUT] Cleared sessionStorage');
+    
+    // FIRST: Sign out from NextAuth to clear session and cookies
+    // This is CRITICAL - it clears the JWT token and session
+    signOut({ 
+      callbackUrl: '/',
+      redirect: false 
+    }).then(() => {
+      console.log('[LOGOUT] NextAuth signOut completed');
       
-      // Get ID token FIRST before doing anything else
-      const idToken = session?.idToken;
-      console.log(`[LOGOUT] Got idToken=${!!idToken}`);
+      // SECOND: Then redirect to Okta logout
+      // Include post_logout_redirect_uri to send user back to our app login page
+      const appBaseUrl = process.env.NEXT_PUBLIC_NEXTAUTH_URL || window.location.origin;
+      const postLogoutRedirectUri = `${appBaseUrl}/?logout=success`;
       
-      // Set logout flag to prevent custom auth from triggering
-      sessionStorage.setItem('just-logged-out', 'true');
-      sessionStorage.setItem('just-logged-out-time', Date.now().toString());
-      
-      // Clear client-side storage
-      sessionStorage.removeItem('custom-auth-initiated');
-      sessionStorage.removeItem('custom-auth-state');
-      sessionStorage.removeItem('custom-auth-verifier');
-      console.debug('[LOGOUT] Cleared sessionStorage');
-      
-      const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://your-domain.okta.com';
-      
-      // SKIP calling signOut() - just go directly to Okta logout
-      // This avoids any NextAuth API calls
-      console.log('[LOGOUT] Redirecting DIRECTLY to Okta logout (NO signOut call)');
-      
-      if (idToken) {
-        // Use OIDC logout with id_token_hint
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}`;
-        console.log('[LOGOUT] Okta logout URL:', oktaLogoutUrl.substring(0, 100) + '...');
+      if (clientId && idToken) {
+        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+        console.log('[LOGOUT] Redirecting to Okta logout with id_token_hint and post_logout_redirect_uri');
+        window.location.href = oktaLogoutUrl;
+      } else if (clientId) {
+        // Fallback to client_id based logout
+        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?client_id=${clientId}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
+        console.log('[LOGOUT] Redirecting to Okta logout with client_id and post_logout_redirect_uri');
         window.location.href = oktaLogoutUrl;
       } else {
-        console.log('[LOGOUT] No idToken, going home');
-        window.location.href = '/';
+        // Fallback to basic logout
+        const oktaLogoutUrl = `${oktaBaseUrl}/login/signout`;
+        console.log('[LOGOUT] Redirecting to Okta basic logout');
+        window.location.href = oktaLogoutUrl;
       }
-    } catch (error) {
-      console.error(`[LOGOUT] ERROR: ${error instanceof Error ? error.message : String(error)}`);
-      sessionStorage.setItem('just-logged-out', 'true');
+    }).catch((error) => {
+      console.error('[LOGOUT] NextAuth signOut error:', error);
       window.location.href = '/';
-    }
+    });
   };
 
   return (
