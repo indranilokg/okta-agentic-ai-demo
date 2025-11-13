@@ -37,8 +37,23 @@ function clearAllCookies(response: NextResponse) {
     'temp-logout-id-token',
   ];
   
-  // Clear NextAuth cookies
-  for (const cookieName of nextAuthCookieNames) {
+  // Clear NextAuth cookies (including JWT token)
+  const jwtCookieNames = [
+    'next-auth.session-token',
+    '__Secure-next-auth.session-token',
+    '__Host-next-auth.session-token',
+    'next-auth.csrf-token',
+    '__Secure-next-auth.csrf-token',
+    '__Host-next-auth.csrf-token',
+    'next-auth.callback-url',
+    '__Secure-next-auth.callback-url',
+    '__Host-next-auth.callback-url',
+    'next-auth', // Also clear the JWT token cookie name variations
+    '__Secure-next-auth',
+    '__Host-next-auth',
+  ];
+  
+  for (const cookieName of jwtCookieNames) {
     cookieStore.delete(cookieName);
     response.cookies.set(cookieName, '', {
       expires: new Date(0),
