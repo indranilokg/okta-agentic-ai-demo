@@ -127,11 +127,13 @@ function clearAllCookies(response: NextResponse) {
 }
 
 export async function GET(request: Request) {
-  try {
-    console.log('[Signout] GET request started');
-    
-    const { searchParams } = new URL(request.url);
-    const redirectToOkta = searchParams.get('redirect_to_okta') === 'true';
+    try {
+      console.log('[Signout] GET request started');
+      console.log('[Signout] Full URL:', request.url);
+
+      const { searchParams } = new URL(request.url);
+      const redirectToOkta = searchParams.get('redirect_to_okta') === 'true';
+      console.log('[Signout] redirect_to_okta param:', redirectToOkta);
     
     const cookieStore = await cookies();
     let idToken: string | undefined;
@@ -164,13 +166,19 @@ export async function GET(request: Request) {
     const oktaBaseUrl = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL;
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     
+    console.log('[Signout] OKTA_DOMAIN:', process.env.OKTA_DOMAIN);
+    console.log('[Signout] NEXT_PUBLIC_OKTA_BASE_URL:', process.env.NEXT_PUBLIC_OKTA_BASE_URL);
+    console.log('[Signout] oktaBaseUrl resolved to:', oktaBaseUrl);
     console.log('[Signout] Config check - oktaBaseUrl present:', !!oktaBaseUrl, 'redirectToOkta:', redirectToOkta, 'hasToken:', !!idToken);
     
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
     let shouldClearCookies = true;
     
+    console.log('[Signout] Condition check: redirectToOkta=', redirectToOkta, 'oktaBaseUrl=', !!oktaBaseUrl);
+    
     if (redirectToOkta && oktaBaseUrl) {
+      console.log('[Signout] ✓ Going to redirect to Okta');
       // Logout from Okta org endpoint
       // Okta will use session cookies to identify the user, so we need to keep them for this request!
       // The cookies will be cleared by Okta's logout response, or by the /logout page when we return
@@ -186,8 +194,10 @@ export async function GET(request: Request) {
       // The browser will include them automatically in the redirect to Okta
       // After Okta logout, we'll redirect to /logout which will clear any remaining cookies
       shouldClearCookies = false;
+      console.log('[Signout] Final redirect URL:', finalRedirectUrl);
       console.log('[Signout] Redirecting to Okta org logout, will return to:', postLogoutRedirectUri);
     } else {
+      console.log('[Signout] ✗ NOT redirecting to Okta, going to /logout page instead');
       // Redirect to logout page to ensure session is cleared properly
       finalRedirectUrl = `${baseUrl}/logout`;
       console.log('[Signout] Redirecting to logout page');
