@@ -489,13 +489,16 @@ export default function StreamwardAssistant() {
       await new Promise(resolve => setTimeout(resolve, 50));
       
       // Call signout endpoint to clear cookies and get redirect URL
-      // The server returns the redirect URL as JSON instead of redirecting,
-      // which avoids Vercel timeout issues with external redirects
+      // Use POST with redirect_to_okta in body to ensure query string is preserved
       console.log('[LOGOUT] Calling signout endpoint');
       try {
-        const response = await fetch('/api/auth/signout?redirect_to_okta=true', {
-          method: 'GET',
+        const response = await fetch('/api/auth/signout', {
+          method: 'POST',
           credentials: 'include', // Include cookies in the request
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ redirectToOkta: true }),
         });
         
         if (response.ok) {

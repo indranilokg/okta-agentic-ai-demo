@@ -224,9 +224,18 @@ export async function POST(request: Request) {
     console.log('[Signout] POST request received');
     console.log('[Signout] POST Full URL:', request.url);
     
-    const { searchParams } = new URL(request.url);
-    const redirectToOkta = searchParams.get('redirect_to_okta') === 'true';
-    console.log('[Signout] POST redirect_to_okta param:', redirectToOkta);
+    // Try to get redirectToOkta from POST body first, then query string as fallback
+    let redirectToOkta = false;
+    try {
+      const body = await request.json();
+      redirectToOkta = body.redirectToOkta === true;
+      console.log('[Signout] POST redirectToOkta from body:', redirectToOkta);
+    } catch {
+      // If no JSON body, try query params
+      const { searchParams } = new URL(request.url);
+      redirectToOkta = searchParams.get('redirect_to_okta') === 'true';
+      console.log('[Signout] POST redirectToOkta from query:', redirectToOkta);
+    }
     
     const cookieStore = await cookies();
     let idToken: string | undefined;
@@ -273,18 +282,19 @@ export async function POST(request: Request) {
       console.log('[Signout] POST: Redirecting to logout page');
     }
     
-    // Create response with redirect
-    const response = NextResponse.redirect(finalRedirectUrl, { status: 302 });
+    // Return JSON with redirect URL instead of server-side redirect
+    // The client will handle the redirect to avoid issues with fetch + redirect conversion
+    console.log('[Signout] POST: Returning JSON with redirect URL:', finalRedirectUrl);
     
-    // Only clear cookies if not redirecting to Okta
+    // If we need to clear cookies, do it now before returning
+    let response = NextResponse.json({ redirectUrl: finalRedirectUrl }, { status: 200 });
     if (shouldClearCookies) {
-      return clearAllCookies(response);
+      response = clearAllCookies(response);
     }
-    
     return response;
   } catch (error) {
     console.error('[Signout] POST Exception:', error instanceof Error ? error.message : String(error));
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-    return NextResponse.redirect(baseUrl, { status: 302 });
+    return NextResponse.json({ redirectUrl: baseUrl }, { status: 500 });
   }
 }
