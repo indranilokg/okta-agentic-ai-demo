@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Sign out API route that clears all authentication cookies
  * This ensures both NextAuth session cookies and custom auth cookies are deleted
