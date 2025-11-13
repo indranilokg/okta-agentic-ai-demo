@@ -222,9 +222,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     console.log('[Signout] POST request received');
+    console.log('[Signout] POST Full URL:', request.url);
     
     const { searchParams } = new URL(request.url);
     const redirectToOkta = searchParams.get('redirect_to_okta') === 'true';
+    console.log('[Signout] POST redirect_to_okta param:', redirectToOkta);
     
     const cookieStore = await cookies();
     let idToken: string | undefined;
@@ -239,11 +241,18 @@ export async function POST(request: Request) {
     const oktaBaseUrl = process.env.OKTA_DOMAIN || process.env.NEXT_PUBLIC_OKTA_BASE_URL;
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     
+    console.log('[Signout] POST OKTA_DOMAIN:', process.env.OKTA_DOMAIN);
+    console.log('[Signout] POST NEXT_PUBLIC_OKTA_BASE_URL:', process.env.NEXT_PUBLIC_OKTA_BASE_URL);
+    console.log('[Signout] POST oktaBaseUrl resolved to:', oktaBaseUrl);
+    
     // Build redirect URL
     let finalRedirectUrl = baseUrl;
     let shouldClearCookies = true;
     
+    console.log('[Signout] POST Condition check: redirectToOkta=', redirectToOkta, 'oktaBaseUrl=', !!oktaBaseUrl);
+    
     if (redirectToOkta && oktaBaseUrl) {
+      console.log('[Signout] POST ✓ Going to redirect to Okta');
       // Logout from Okta org endpoint
       // Okta will use session cookies to identify the user
       const postLogoutRedirectUri = `${baseUrl}/logout`;
@@ -256,8 +265,10 @@ export async function POST(request: Request) {
       
       // DO NOT clear cookies yet - Okta needs them!
       shouldClearCookies = false;
+      console.log('[Signout] POST Final redirect URL:', finalRedirectUrl);
       console.log('[Signout] POST: Redirect to Okta org logout');
     } else {
+      console.log('[Signout] POST ✗ NOT redirecting to Okta, going to /logout page instead');
       finalRedirectUrl = `${baseUrl}/logout`;
       console.log('[Signout] POST: Redirecting to logout page');
     }
