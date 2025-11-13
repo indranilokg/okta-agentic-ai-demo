@@ -479,18 +479,16 @@ export default function StreamwardAssistant() {
       console.log('[LOGOUT] NextAuth signOut completed');
       
       // SECOND: Then redirect to Okta logout
-      // Include post_logout_redirect_uri to send user back to our app login page
-      const appBaseUrl = process.env.NEXT_PUBLIC_NEXTAUTH_URL || window.location.origin;
-      const postLogoutRedirectUri = `${appBaseUrl}/?logout=success`;
-      
+      // Do NOT include post_logout_redirect_uri - it causes "canceled" status
+      // Just use id_token_hint like the working okta-cross-app-access-demo
       if (clientId && idToken) {
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
-        console.log('[LOGOUT] Redirecting to Okta logout with id_token_hint and post_logout_redirect_uri');
+        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}`;
+        console.log('[LOGOUT] Redirecting to Okta logout with id_token_hint');
         window.location.href = oktaLogoutUrl;
       } else if (clientId) {
         // Fallback to client_id based logout
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?client_id=${clientId}&post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirectUri)}`;
-        console.log('[LOGOUT] Redirecting to Okta logout with client_id and post_logout_redirect_uri');
+        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?client_id=${clientId}`;
+        console.log('[LOGOUT] Redirecting to Okta logout with client_id');
         window.location.href = oktaLogoutUrl;
       } else {
         // Fallback to basic logout
