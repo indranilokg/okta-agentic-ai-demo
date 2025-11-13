@@ -104,6 +104,12 @@ export const authOptions = {
     signOut: "/",
     error: "/",
   },
+  events: {
+    async signOut() {
+      // Custom signOut event - just log it, don't call any API
+      console.log('[AUTH] signOut event triggered');
+    },
+  },
   session: {
     strategy: "jwt" as const,
   },
