@@ -466,27 +466,12 @@ export default function StreamwardAssistant() {
       sessionStorage.removeItem('custom-auth-verifier');
       console.debug('[LOGOUT] Cleared sessionStorage');
       
-      // Sign out from NextAuth - this clears the session cookie
-      // Use redirect: false so we can handle cookie clearing and Okta logout
+      // Sign out from NextAuth - this clears the NextAuth session cookie
+      // Use redirect: false so we can handle the Okta logout redirect ourselves
       await signOut({ 
         callbackUrl: window.location.origin,
         redirect: false
       });
-      
-      // Store ID token temporarily in a client-side cookie so the signout endpoint can access it
-      // This avoids putting the full JWT in the URL (which can exceed URL length limits)
-      if (idToken) {
-        // Set a temporary cookie that will be cleared by the signout endpoint
-        // Use Secure flag in production, Lax SameSite for cross-site handling
-        const isProduction = process.env.NODE_ENV === 'production';
-        const secureFlagStr = isProduction ? '; Secure' : '';
-        document.cookie = `temp-logout-id-token=${encodeURIComponent(idToken)}; path=/; max-age=60; SameSite=Lax${secureFlagStr}`;
-        console.log('[LOGOUT] Stored ID token in temporary cookie');
-      }
-      
-      // Add a small delay to ensure cookie is written before redirect
-      // This prevents race conditions between cookie setting and redirect
-      await new Promise(resolve => setTimeout(resolve, 50));
       
       // Simple direct logout to Okta - no complex API coordination
       // This is the same approach used in okta-cross-app-access-demo and it works!
@@ -495,8 +480,9 @@ export default function StreamwardAssistant() {
       const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://your-domain.okta.com';
       
       // Use OIDC logout with id_token_hint (WITHOUT post_logout_redirect_uri which causes issues)
+      // NOTE: Do NOT encodeURIComponent the idToken - Okta expects it raw
       if (idToken) {
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${encodeURIComponent(idToken)}`;
+        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}`;
         console.log('[LOGOUT] Using Okta logout URL with id_token_hint');
         window.location.href = oktaLogoutUrl;
       } else {
