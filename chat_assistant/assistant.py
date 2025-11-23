@@ -210,6 +210,9 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             prompt_category = user_info.get("prompt_category")
             if prompt_category:
                 logger.info(f"[CHAT] Prompt category from library: {prompt_category}")
+                logger.info(f"[CHAT] Category type: {type(prompt_category)}, value repr: {repr(prompt_category)}")
+            else:
+                logger.info(f"[CHAT] No prompt category found in user_info")
             
             # Query verbs that indicate MCP queries (list, show, get, tell, information, etc.)
             query_verbs = ["list", "show", "get", "tell", "what", "information", "details", 
@@ -234,7 +237,9 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             has_info_pattern = any(pattern in message_lower for pattern in mcp_info_patterns)
             
             # FIRST: Check if prompt came from library with explicit category
+            logger.info(f"[CHAT] Evaluating prompt_category: {repr(prompt_category)}")
             if prompt_category == "mcp-employees":
+                logger.info(f"[CHAT] ✓ Matched mcp-employees category!")
                 logger.info(f"[CHAT] Category check: employees_mcp={bool(self.employees_mcp)}")
                 if self.employees_mcp:
                     is_mcp_scenario = True
@@ -243,6 +248,7 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                 else:
                     logger.warning(f"[CHAT] MCP employees server not available!")
             elif prompt_category == "mcp-partners":
+                logger.info(f"[CHAT] ✓ Matched mcp-partners category!")
                 logger.info(f"[CHAT] Category check: partners_mcp={bool(self.partners_mcp)}")
                 if self.partners_mcp:
                     is_mcp_scenario = True
@@ -250,6 +256,8 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                     logger.info(f"[CHAT] MCP: direct routing to partners (library category)")
                 else:
                     logger.warning(f"[CHAT] MCP partners server not available!")
+            elif prompt_category:
+                logger.info(f"[CHAT] ✗ Prompt category '{prompt_category}' does not match any MCP category")
             # FALLBACK: Use keyword-based detection for non-library prompts
             elif not is_rag_query and not detected_workflow and (has_query_verb or has_info_pattern):
                 has_employee_keywords = any(keyword in message_lower for keyword in employee_keywords)
