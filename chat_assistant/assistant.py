@@ -206,6 +206,11 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             mcp_server = None
             mcp_tool = None
             
+            # Check if prompt came from the library with explicit category
+            prompt_category = user_info.get("prompt_category")
+            if prompt_category:
+                logger.info(f"[CHAT] Prompt category from library: {prompt_category}")
+            
             # Query verbs that indicate MCP queries (list, show, get, tell, information, etc.)
             query_verbs = ["list", "show", "get", "tell", "what", "information", "details", 
                           "query", "search", "find", "retrieve", "show me", "tell me",
@@ -228,7 +233,17 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             has_query_verb = any(verb in message_lower for verb in query_verbs)
             has_info_pattern = any(pattern in message_lower for pattern in mcp_info_patterns)
             
-            if not is_rag_query and not detected_workflow and (has_query_verb or has_info_pattern):
+            # FIRST: Check if prompt came from library with explicit category
+            if prompt_category == "mcp-employees" and self.employees_mcp:
+                is_mcp_scenario = True
+                mcp_server = "employees"
+                logger.info(f"[CHAT] MCP: direct routing to employees (library category)")
+            elif prompt_category == "mcp-partners" and self.partners_mcp:
+                is_mcp_scenario = True
+                mcp_server = "partners"
+                logger.info(f"[CHAT] MCP: direct routing to partners (library category)")
+            # FALLBACK: Use keyword-based detection for non-library prompts
+            elif not is_rag_query and not detected_workflow and (has_query_verb or has_info_pattern):
                 has_employee_keywords = any(keyword in message_lower for keyword in employee_keywords)
                 has_partner_keywords = any(keyword in message_lower for keyword in partner_keywords)
                 
@@ -238,11 +253,11 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                 if (has_employee_keywords or (has_info_pattern and not has_partner_keywords)) and self.employees_mcp:
                     is_mcp_scenario = True
                     mcp_server = "employees"
-                    logger.debug(f"[CHAT] MCP: employee_query=True")
+                    logger.debug(f"[CHAT] MCP: employee_query=True (keyword detection)")
                 elif has_partner_keywords and self.partners_mcp:
                     is_mcp_scenario = True
                     mcp_server = "partners"
-                    logger.debug(f"[CHAT] MCP: partner_query=True")
+                    logger.debug(f"[CHAT] MCP: partner_query=True (keyword detection)")
             
             # Log scenario detection
             if is_rag_query:

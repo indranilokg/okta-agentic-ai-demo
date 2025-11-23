@@ -14,6 +14,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  prompt_category?: string;
 }
 
 interface RAGInfo {
@@ -312,12 +313,21 @@ export default function StreamwardAssistant() {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    // Get the prompt category if it was set from the library
+    const promptCategory = typeof window !== 'undefined' ? sessionStorage.getItem('promptCategory') : null;
+    
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
       content: input,
       timestamp: new Date(),
+      prompt_category: promptCategory || undefined,
     };
+
+    // Clear the stored category after using it
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('promptCategory');
+    }
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
@@ -523,8 +533,12 @@ export default function StreamwardAssistant() {
             </div>
             <div className="flex items-center space-x-4">
               <PromptLibrary 
-                onSelectPrompt={(prompt) => {
+                onSelectPrompt={(prompt, category) => {
                   setInput(prompt);
+                  // Store the prompt category for later use
+                  if (category) {
+                    sessionStorage.setItem('promptCategory', category);
+                  }
                   // Focus the input field after a short delay
                   setTimeout(() => {
                     inputRef.current?.focus();

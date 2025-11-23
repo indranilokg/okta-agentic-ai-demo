@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 interface PromptLibraryProps {
-  onSelectPrompt: (prompt: string) => void;
+  onSelectPrompt: (prompt: string, category?: string) => void;
 }
 
 interface PromptCategory {
@@ -113,8 +113,8 @@ export default function PromptLibrary({ onSelectPrompt }: PromptLibraryProps) {
     setExpandedCategory(expandedCategory === categoryId ? null : categoryId);
   };
 
-  const handlePromptClick = (prompt: string) => {
-    onSelectPrompt(prompt);
+  const handlePromptClick = (prompt: string, categoryId: string) => {
+    onSelectPrompt(prompt, categoryId);
     setIsOpen(false);
   };
 
@@ -202,7 +202,7 @@ export default function PromptLibrary({ onSelectPrompt }: PromptLibraryProps) {
                       {category.prompts.map((prompt, index) => (
                         <button
                           key={index}
-                          onClick={() => handlePromptClick(prompt)}
+                          onClick={() => handlePromptClick(prompt, category.id)}
                           disabled={category.id === 'xaa'}
                           className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
                             category.id === 'xaa'

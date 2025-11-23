@@ -184,11 +184,12 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         
         last_message = request.messages[-1]
         user_message = last_message.get('content', '')
+        prompt_category = last_message.get('prompt_category')
         
         # Get session ID from request or use default
         session_id = request.session_id or 'test-session'
         
-        logger.debug(f"[API] Chat: msg={user_message[:50]}..., session={session_id}")
+        logger.debug(f"[API] Chat: msg={user_message[:50]}..., session={session_id}, category={prompt_category}")
         
         # Extract tokens from headers
         # Support both header formats and body parameters for flexibility
@@ -261,6 +262,11 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         
         logger.info(f"[API] User_session: email={user_info['email']}, has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
         logger.debug(f"[API] User_info keys: {list(user_info.keys())}")
+        
+        # Add prompt category to user_info if provided
+        if prompt_category:
+            user_info["prompt_category"] = prompt_category
+            logger.info(f"[API] Prompt category: {prompt_category}")
         
         # Process message through Streamward Assistant (with memory management)
         response = await streamward_assistant.process_message(
