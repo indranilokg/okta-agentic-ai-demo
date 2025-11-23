@@ -28,16 +28,10 @@ class EmployeesMCP:
     
     def __init__(self):
         self.okta_auth = OktaAuth()
-        # Initialize cross-app access manager with fallback if ID-JAG not configured
-        try:
-            self.cross_app_access_manager = OktaCrossAppAccessManager()
-            logger.info(" EmployeesMCP initialized with ID-JAG token validation")
-        except Exception as e:
-            logger.warning(f" EmployeesMCP: ID-JAG not available ({type(e).__name__}), running in limited mode")
-            self.cross_app_access_manager = None
-        
+        self.cross_app_access_manager = OktaCrossAppAccessManager()
         self.employees_data = self._initialize_mock_data()
         self.tools = self._define_tools()
+        logger.info(" EmployeesMCP initialized with ID-JAG token validation")
     
     def _define_tools(self) -> List[Dict[str, Any]]:
         """Define available MCP tools for employee management"""
@@ -827,16 +821,6 @@ class EmployeesMCP:
         """
         try:
             mcp_token = user_info.get("mcp_token")
-            
-            # If ID-JAG is not available, allow access with demo permissions for testing
-            if not self.cross_app_access_manager:
-                logger.info("[MCP_EMPLOYEES] ID-JAG not available, allowing access in demo mode")
-                return {
-                    "valid": True,
-                    "sub": user_info.get("sub", "demo-user"),
-                    "scope": "mcp:read mcp:write",  # Full permissions for demo
-                    "aud": "api://streamward-chat"
-                }
             
             if not mcp_token:
                 logger.warning(" No MCP token provided in user_info. Access denied.")
