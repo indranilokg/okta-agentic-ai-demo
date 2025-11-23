@@ -234,14 +234,22 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             has_info_pattern = any(pattern in message_lower for pattern in mcp_info_patterns)
             
             # FIRST: Check if prompt came from library with explicit category
-            if prompt_category == "mcp-employees" and self.employees_mcp:
-                is_mcp_scenario = True
-                mcp_server = "employees"
-                logger.info(f"[CHAT] MCP: direct routing to employees (library category)")
-            elif prompt_category == "mcp-partners" and self.partners_mcp:
-                is_mcp_scenario = True
-                mcp_server = "partners"
-                logger.info(f"[CHAT] MCP: direct routing to partners (library category)")
+            if prompt_category == "mcp-employees":
+                logger.info(f"[CHAT] Category check: employees_mcp={bool(self.employees_mcp)}")
+                if self.employees_mcp:
+                    is_mcp_scenario = True
+                    mcp_server = "employees"
+                    logger.info(f"[CHAT] MCP: direct routing to employees (library category)")
+                else:
+                    logger.warning(f"[CHAT] MCP employees server not available!")
+            elif prompt_category == "mcp-partners":
+                logger.info(f"[CHAT] Category check: partners_mcp={bool(self.partners_mcp)}")
+                if self.partners_mcp:
+                    is_mcp_scenario = True
+                    mcp_server = "partners"
+                    logger.info(f"[CHAT] MCP: direct routing to partners (library category)")
+                else:
+                    logger.warning(f"[CHAT] MCP partners server not available!")
             # FALLBACK: Use keyword-based detection for non-library prompts
             elif not is_rag_query and not detected_workflow and (has_query_verb or has_info_pattern):
                 has_employee_keywords = any(keyword in message_lower for keyword in employee_keywords)
