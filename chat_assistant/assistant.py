@@ -51,13 +51,17 @@ class StreamwardAssistant:
         
         # Initialize MCP servers
         try:
+            logger.info("[CHAT_INIT] Attempting to import MCP servers...")
             from mcp_servers.employees_mcp import EmployeesMCP
             from mcp_servers.partners_mcp import PartnersMCP
+            logger.info("[CHAT_INIT] Imports successful, creating instances...")
             self.employees_mcp = EmployeesMCP()
+            logger.info("[CHAT_INIT] EmployeesMCP instance created")
             self.partners_mcp = PartnersMCP()
+            logger.info("[CHAT_INIT] PartnersMCP instance created")
             logger.info("[CHAT_INIT] MCP servers initialized: EmployeesMCP and PartnersMCP")
         except Exception as e:
-            logger.warning(f"[CHAT_INIT] MCP server warning: {e}")
+            logger.error(f"[CHAT_INIT] MCP server initialization error: {e}", exc_info=True)
             self.employees_mcp = None
             self.partners_mcp = None
         
