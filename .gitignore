@@ -134,3 +134,6 @@ Desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+#Docker Compose
+docker-compose.yaml
