@@ -12,6 +12,7 @@ services:
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - TEST_USER_EMAIL=userid_youll_login_with_for_demo
       # ============================================================================
       # SECTION 1: CORE API REQUIREMENTS
       # ============================================================================
@@ -106,6 +107,59 @@ services:
     restart: unless-stopped
     networks:
       - streamward-network
+
+  # Admin Scripts - Run manually with:
+  #   docker compose --profile admin run upload-security-doc
+  #   docker compose --profile admin run clear-pinecone
+  admin-scripts:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile
+    profiles:
+      - admin
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+      - API_BASE_URL=http://api:8000
+      - TEST_USER_EMAIL=userid_youll_login_with_for_demo
+      # ============================================================================
+      # FINE-GRAINED AUTHORIZATION (Okta FGA)
+      # ============================================================================
+      - FGA_STORE_ID=your-fga-store-id
+      - FGA_CLIENT_ID=your-fga-client-id
+      - FGA_CLIENT_SECRET=your-fga-client-secret
+      - FGA_API_URL=https://api.us1.fga.dev
+      - FGA_API_AUDIENCE=https://api.us1.fga.dev/
+      - FGA_API_TOKEN_ISSUER=auth.fga.dev
+      - FGA_AUTHORIZATION_MODEL_ID=your-auth-model-id
+      # ============================================================================
+      # RAG & VECTOR STORAGE (Pinecone)
+      # ============================================================================
+      - PINECONE_API_KEY=your-pinecone-api-key
+      - PINECONE_ENVIRONMENT=your-pinecone-environment
+      - PINECONE_INDEX_NAME=streamward-documents
+      # ============================================================================
+      # OPENAI - needed for embeddings
+      # ============================================================================
+      - OPENAI_API_KEY=your-openai-api-key-here
+    depends_on:
+      - api
+    networks:
+      - streamward-network
+
+  upload-security-doc:
+    extends:
+      service: admin-scripts
+    container_name: streamward-upload-security-doc
+    command: python upload_security_doc.py
+
+  clear-pinecone:
+    extends:
+      service: admin-scripts
+    container_name: streamward-clear-pinecone
+    command: python clear_pinecone.py
+    stdin_open: true
+    tty: true
 
 networks:
   streamward-network:
