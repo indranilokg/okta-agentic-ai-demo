@@ -34,7 +34,6 @@ class StreamwardAssistant:
         openai_api_key = os.getenv('OPENAI_API_KEY')
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
-        
         self.client = openai.OpenAI(api_key=openai_api_key)
         self.model = "gpt-3.5-turbo"
         
@@ -491,6 +490,8 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "content": f"I apologize, but I encountered an error processing your message: {str(e)}",
                 "agent_type": "Error Handler",

@@ -34,6 +34,11 @@ COPY mcp_servers/ ./mcp_servers/
 COPY rag/ ./rag/
 COPY document_repository/ ./document_repository/
 
+#If the user is on a corporate VPN that does SSL inspection, we need to provide a way to update the trust store of the container.
+#This file is included in the python SSL_CERT_FILE environment variable as well.
+COPY CATrust.pem* /usr/local/share/ca-certificates/CATrust.crt
+RUN update-ca-certificates --verbose
+
 # Expose the API port
 EXPOSE 8000
 

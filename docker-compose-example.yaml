@@ -118,6 +118,8 @@ services:
     profiles:
       - admin
     environment:
+    #Uncomment this line if you're including a corporate VPN trust certificate store.
+    #  - SSL_CERT_FILE=/usr/local/share/ca-certificates/CATrust.crt
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - API_BASE_URL=http://api:8000
