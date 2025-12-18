@@ -32,6 +32,7 @@ class PineconeDocumentStore:
             # Get Pinecone configuration
             api_key = os.getenv('PINECONE_API_KEY')
             environment = os.getenv('PINECONE_ENVIRONMENT')
+            customCA = os.getenv('SSL_CERT_FILE', '')
             self.index_name = os.getenv('PINECONE_INDEX_NAME', 'streamward-documents')
             
             if not api_key or not environment:
@@ -39,7 +40,10 @@ class PineconeDocumentStore:
                 return False
                 
             # Initialize Pinecone
-            self.pc = Pinecone(api_key=api_key)
+            if customCA:
+                self.pc = Pinecone(api_key=api_key, ssl_ca_certs=customCA)
+            else:
+                self.pc = Pinecone(api_key=api_key)
             
             # Initialize embeddings
             openai_api_key = os.getenv('OPENAI_API_KEY')
