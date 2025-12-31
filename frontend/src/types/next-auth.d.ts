@@ -2,10 +2,9 @@ import NextAuth from "next-auth";
 
 declare module "next-auth" {
   interface Session {
-    // Store only what's needed:
-    idToken?: string; // Org ID token (for frontend display)
-    customAccessToken?: string; // Custom access token (for token exchange)
-    // NOT stored: org access token, custom ID token (to reduce cookie size)
+    // Tokens from custom authorization server
+    idToken?: string; // ID token - used for logout only
+    accessToken?: string; // Access token - used for chat assistant/MCP exchanges
     user: {
       id?: string;
       name?: string | null;
@@ -15,10 +14,9 @@ declare module "next-auth" {
   }
 
   interface JWT {
-    // Store only what's needed:
-    idToken?: string; // Org ID token (for frontend display)
-    customAccessToken?: string; // Custom access token (for token exchange)
-    // NOT stored: org access token, custom ID token (to reduce cookie size)
+    // Tokens from custom authorization server
+    idToken?: string; // ID token - used for logout only
+    accessToken?: string; // Access token - used for chat assistant/MCP exchanges
     profile?: any;
   }
 }

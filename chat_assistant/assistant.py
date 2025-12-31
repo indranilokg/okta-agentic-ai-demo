@@ -29,7 +29,7 @@ class StreamwardAssistant:
     - Result: Secure cross-app authentication without sharing credentials
     """
     
-    def __init__(self):
+    def __init__(self, google_workspace_server: Optional[Any] = None):
         # Get OpenAI API key from environment
         openai_api_key = os.getenv('OPENAI_API_KEY')
         if not openai_api_key:
@@ -65,6 +65,23 @@ class StreamwardAssistant:
             self.employees_mcp = None
             self.partners_mcp = None
         
+        # Initialize Resource Servers
+        # Use provided instance if available (for shared state like auth_sessions)
+        if google_workspace_server:
+            logger.info("[CHAT_INIT] Using provided GoogleWorkspaceResourceServer instance")
+            self.google_workspace_server = google_workspace_server
+        else:
+            try:
+                logger.info("[CHAT_INIT] Attempting to import Resource servers...")
+                from resource_servers.google_workspace import GoogleWorkspaceResourceServer
+                logger.info("[CHAT_INIT] Import successful, creating instance...")
+                self.google_workspace_server = GoogleWorkspaceResourceServer()
+                logger.info("[CHAT_INIT] GoogleWorkspaceResourceServer instance created")
+                logger.info("[CHAT_INIT] Resource servers initialized: GoogleWorkspace")
+            except Exception as e:
+                logger.error(f"[CHAT_INIT] Resource server initialization error: {e}", exc_info=True)
+                self.google_workspace_server = None
+        
         # System prompt for the assistant
         self.system_prompt = """
 You are the Streamward AI Assistant, an intelligent enterprise assistant for Streamward Corporation.
@@ -77,6 +94,7 @@ Your capabilities include:
 - Accessing authorized documents and knowledge base through RAG (Retrieval Augmented Generation)
 - Querying employee information through MCP tools (employees, departments, benefits, onboarding)
 - Querying partner information through MCP tools (partners, contracts, SLA, revenue)
+- Accessing Google Workspace resources (Calendar, Gmail, Drive) through Resource Servers
 
 You have access to the full conversation history and MUST use it to maintain context. 
 If someone shares their name, preferences, or any information during the conversation, 
@@ -88,7 +106,9 @@ respects user permissions and only returns documents the user is authorized to a
 
 When users ask about employees, departments, benefits, or HR-related topics, the system
 will automatically route to employee MCP tools. When users ask about partners, contracts,
-or vendor information, the system will route to partner MCP tools.
+or vendor information, the system will route to partner MCP tools. When users ask about
+Google Calendar, Gmail, or other Google Workspace resources, the system will route to
+Google Workspace Resource Server.
 
 Be helpful, professional, and conversational while maintaining enterprise-grade security awareness.
 """
@@ -279,6 +299,30 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                     mcp_server = "partners"
                     logger.debug(f"[CHAT] MCP: partner_query=True (keyword detection)")
             
+            # 4. Resource Server Detection - Google Workspace queries
+            is_resource_scenario = False
+            resource_server = None
+            
+            # Check if prompt came from library with explicit category
+            if prompt_category == "google-workspace":
+                logger.info(f"[CHAT] ✓ Matched google-workspace category!")
+                if self.google_workspace_server:
+                    is_resource_scenario = True
+                    resource_server = "google-workspace"
+                    logger.info(f"[CHAT] Resource: direct routing to google-workspace (library category)")
+                else:
+                    logger.warning(f"[CHAT] Google Workspace server not available!")
+            
+            # Keyword-based detection for Google Workspace
+            google_keywords = ["calendar", "google calendar", "gmail", "google workspace", 
+                             "google drive", "show my calendar", "my events", "my meetings"]
+            has_google_keywords = any(keyword in message_lower for keyword in google_keywords)
+            
+            if not is_resource_scenario and has_google_keywords and self.google_workspace_server:
+                is_resource_scenario = True
+                resource_server = "google-workspace"
+                logger.debug(f"[CHAT] Resource: google-workspace_query=True (keyword detection)")
+            
             # Log scenario detection
             if is_rag_query:
                 detected_scenario = "RAG"
@@ -286,12 +330,35 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             elif detected_workflow:
                 detected_scenario = "A2A"
                 logger.debug(f"[CHAT] Scenario: A2A_workflow={detected_workflow}")
+            elif is_resource_scenario:
+                detected_scenario = "RESOURCE"
+                logger.debug(f"[CHAT] Scenario: RESOURCE_server={resource_server}")
             elif is_mcp_scenario:
                 detected_scenario = "MCP"
                 logger.debug(f"[CHAT] Scenario: MCP_server={mcp_server}")
             else:
                 detected_scenario = "GENERAL"
                 logger.debug(f"[CHAT] Scenario: GENERAL_CHAT")
+            
+            # Route to Resource Server if detected
+            if detected_scenario == "RESOURCE" and resource_server:
+                logger.debug(f"[CHAT] Routing to Resource Server: {resource_server}")
+                try:
+                    resource_result = await self._handle_resource_query(
+                        message,
+                        resource_server,
+                        user_info,
+                        session_id
+                    )
+                    return resource_result
+                except Exception as e:
+                    logger.error(f"[CHAT] Resource_query_failed: {str(e)}", exc_info=True)
+                    return {
+                        "content": f"I encountered an error accessing {resource_server}. Please try again.",
+                        "agent_type": f"Resource ({resource_server})",
+                        "session_id": session_id,
+                        "error": str(e)
+                    }
             
             # Route to MCP tools if MCP scenario detected
             if detected_scenario == "MCP" and mcp_server:
@@ -499,12 +566,12 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                 "used_rag": False
             }
     
-    async def _exchange_id_token_for_mcp_access(self, id_token: str, mcp_server: str, user_info: Dict[str, Any]) -> Optional[str]:
+    async def _exchange_id_token_for_mcp_access(self, access_token: Optional[str], mcp_server: str, user_info: Dict[str, Any]) -> Optional[str]:
         """
-        STEPS 1-3 of ID-JAG Flow: Exchange ID token for MCP access token
+        STEPS 1-3 of ID-JAG Flow: Exchange access token for MCP access token
         
         Args:
-            id_token: User's ID token from authentication
+            access_token: User's access token from authentication
             mcp_server: Target MCP server ("employees" or "partners")
             user_info: User context info
             
@@ -516,14 +583,16 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
                 logger.error(" MCP SDK not configured. ID-JAG exchange not available.")
                 return None
             
-            if not id_token:
-                logger.error("[MCP] No ID token provided. Cannot exchange for MCP token.")
+            if not access_token:
+                logger.error("[MCP] No access token provided. Cannot exchange for MCP token.")
                 return None
             
-            logger.debug(f"[MCP] Exchanging ID token for MCP token ({mcp_server})")
+            logger.debug(f"[MCP] Exchanging access token for MCP token ({mcp_server})")
             
-            # Perform the 4-step ID-JAG exchange
-            mcp_token_response = await self.cross_app_access_manager.exchange_id_to_mcp_token(id_token)
+            # Perform the 4-step ID-JAG exchange using access token
+            mcp_token_response = await self.cross_app_access_manager.exchange_id_to_mcp_token(
+                user_access_token=access_token
+            )
             
             if mcp_token_response:
                 # Extract the actual token string from the response dict
@@ -561,13 +630,13 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
         4. MCP server validates token before executing tool
         """
         try:
-            # STEP 1-3: Exchange ID token for MCP access token
-            # ID token should be provided by the frontend in user_info
-            id_token = user_info.get("id_token")
-            if not id_token:
-                logger.error("[MCP] No ID token in user_info. Cannot perform ID-JAG exchange.")
+            # STEP 1-3: Exchange access token for MCP access token
+            # Access token should be provided by the frontend in user_info
+            access_token = user_info.get("access_token")
+            if not access_token:
+                logger.error("[MCP] No access token in user_info. Cannot perform ID-JAG exchange.")
             
-            mcp_token_info = await self._exchange_id_token_for_mcp_access(id_token, mcp_server, user_info)
+            mcp_token_info = await self._exchange_id_token_for_mcp_access(access_token, mcp_server, user_info)
             
             # Extract token and store token info for frontend display
             mcp_access_token = None
@@ -743,6 +812,217 @@ Be helpful, professional, and conversational while maintaining enterprise-grade 
             return {
                 "content": f"I encountered an error processing your {mcp_server} query. Please try again.",
                 "agent_type": f"MCP ({mcp_server.capitalize()})",
+                "error": str(e)
+            }
+    
+    async def _handle_resource_query(self, message: str, resource_server: str, user_info: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """
+        Handle resource server query (e.g., Google Workspace).
+        
+        Flow:
+        1. Exchange access token for authorization server token (ID-JAG)
+        2. Determine which resource tool to call using OpenAI function calling
+        3. Resource server checks Auth0 vault for Google token
+        4. If token not found, return authorization URL for linking
+        5. If token found, call Google API
+        """
+        try:
+            # Get access token from user_info
+            access_token = user_info.get("access_token") or user_info.get("token")
+            if not access_token:
+                logger.error("[RESOURCE] No access token in user_info. Cannot perform ID-JAG exchange.")
+                return {
+                    "content": "Authentication required. Please log in again.",
+                    "agent_type": f"Resource ({resource_server})",
+                    "session_id": session_id,
+                    "error": "missing_token"
+                }
+            
+            # Get the appropriate resource server
+            if resource_server == "google-workspace":
+                resource = self.google_workspace_server
+            else:
+                return {
+                    "content": f"Unknown resource server: {resource_server}",
+                    "agent_type": f"Resource ({resource_server})",
+                    "session_id": session_id,
+                    "error": "unknown_server"
+                }
+            
+            if not resource:
+                return {
+                    "content": f"Resource server {resource_server} not available",
+                    "agent_type": f"Resource ({resource_server})",
+                    "session_id": session_id,
+                    "error": "server_not_available"
+                }
+            
+            # Get available tools from resource server
+            available_tools = resource.list_tools()
+            
+            # Convert resource tools to OpenAI function format
+            openai_functions = []
+            for tool in available_tools:
+                openai_functions.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["parameters"]
+                    }
+                })
+            
+            # Prepare messages for OpenAI with function calling
+            conversation_history = self.sessions.get(session_id, {}).get("conversation_history", [])
+            openai_messages = [
+                {"role": "system", "content": f"You are a helpful assistant that uses Google Workspace tools to answer questions. Always use the appropriate tool to answer user questions."}
+            ]
+            
+            # Add conversation history (last 5 messages for context)
+            for msg in conversation_history[-5:]:
+                openai_messages.append(msg)
+            
+            # Add current message
+            openai_messages.append({"role": "user", "content": message})
+            
+            # Call OpenAI with function calling
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=openai_messages,
+                    tools=openai_functions if openai_functions else None,
+                    tool_choice="auto"
+                )
+            )
+            
+            assistant_message = response.choices[0].message
+            
+            # Check if tool calls were made
+            if assistant_message.tool_calls:
+                tool_calls = assistant_message.tool_calls
+                tool_results = []
+                
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments)
+                        logger.debug(f"[RESOURCE] Calling tool: {tool_name}")
+                        
+                        # Call the resource tool with user_info containing access token
+                        tool_result = await resource.call_tool(tool_name, tool_args, user_info)
+                        
+                        # Check if linking is required
+                        if tool_result.get("requires_linking"):
+                            logger.info(f"[RESOURCE] Account linking required for {resource_server}")
+                            return {
+                                "content": tool_result.get("message", "Account authorization required"),
+                                "agent_type": f"Resource ({resource_server})",
+                                "session_id": session_id,
+                                "requires_linking": True,
+                                "authorization_url": tool_result.get("authorization_url"),
+                                "auth_session": tool_result.get("auth_session"),
+                                "state": tool_result.get("state"),
+                                "connected_accounts_flow": tool_result.get("flow_info")
+                            }
+                        
+                        # Check for errors
+                        if tool_result.get("error"):
+                            tool_results.append({
+                                "tool_call_id": tool_call.id,
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": json.dumps({
+                                    "error": tool_result.get("error"),
+                                    "message": tool_result.get("message", "Tool execution failed")
+                                })
+                            })
+                        else:
+                            tool_results.append({
+                                "tool_call_id": tool_call.id,
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": json.dumps(tool_result)
+                            })
+                    except Exception as e:
+                        logger.error(f"[RESOURCE] Error calling tool {tool_name}: {str(e)}", exc_info=True)
+                        tool_results.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": json.dumps({"error": str(e)})
+                        })
+                
+                # Add tool results to conversation and get final response
+                openai_messages.append(assistant_message)
+                openai_messages.extend(tool_results)
+                
+                # Get final response from OpenAI
+                final_response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self.client.chat.completions.create(
+                        model=self.model,
+                        messages=openai_messages
+                    )
+                )
+                
+                final_content = final_response.choices[0].message.content
+                
+                # Update conversation history
+                if session_id not in self.sessions:
+                    self.sessions[session_id] = {"conversation_history": []}
+                
+                self.sessions[session_id]["conversation_history"].append({"role": "user", "content": message})
+                self.sessions[session_id]["conversation_history"].append({"role": "assistant", "content": final_content})
+                
+                # Extract flow info from tool results
+                flow_info = None
+                for tool_result_item in tool_results:
+                    try:
+                        result_data = json.loads(tool_result_item.get("content", "{}"))
+                        if result_data.get("flow_info"):
+                            flow_info = result_data.get("flow_info")
+                            # Add tools_called to flow_info
+                            if flow_info:
+                                flow_info["tools_called"] = [tc.function.name for tc in tool_calls]
+                                # Add original Okta token and ID-JAG info to flow_info
+                                flow_info["original_okta_token"] = access_token
+                                # The okta_access_token in flow_info is the token used for Auth0 (after ID-JAG conceptually)
+                                # For now, we'll use the same token, but show ID-JAG exchange step in the UI
+                            break
+                    except:
+                        pass
+                
+                return {
+                    "content": final_content,
+                    "agent_type": f"Resource ({resource_server})",
+                    "session_id": session_id,
+                    "tools_called": [tc.function.name for tc in tool_calls],
+                    "connected_accounts_flow": flow_info
+                }
+            else:
+                # No function calls - return assistant's response
+                content = assistant_message.content or "I'm not sure how to help with that."
+                
+                # Update conversation history
+                if session_id not in self.sessions:
+                    self.sessions[session_id] = {"conversation_history": []}
+                
+                self.sessions[session_id]["conversation_history"].append({"role": "user", "content": message})
+                self.sessions[session_id]["conversation_history"].append({"role": "assistant", "content": content})
+                
+                return {
+                    "content": content,
+                    "agent_type": f"Resource ({resource_server})",
+                    "session_id": session_id
+                }
+                
+        except Exception as e:
+            logger.error(f"[RESOURCE] Query_failed: {str(e)}", exc_info=True)
+            return {
+                "content": f"I encountered an error accessing {resource_server}. Please try again.",
+                "agent_type": f"Resource ({resource_server})",
+                "session_id": session_id,
                 "error": str(e)
             }
     

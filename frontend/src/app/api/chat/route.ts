@@ -6,12 +6,11 @@ export async function POST(request: Request) {
   try {
     const { messages, sessionId } = await request.json();
 
-    // Get the current session to access the tokens
+    // Get the current session to access the access token
     const session = await getServerSession(authOptions);
-    const idToken = session?.idToken;
-    const customAccessToken = session?.customAccessToken;
+    const accessToken = session?.accessToken;
     
-    console.log(`[CHAT_API] Session tokens: user=${session?.user?.email}, has_idToken=${!!idToken}, has_customAccessToken=${!!customAccessToken}`);
+    console.log(`[CHAT_API] Session: user=${session?.user?.email}, has_accessToken=${!!accessToken}`);
 
     // Forward to FastAPI backend
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -20,14 +19,9 @@ export async function POST(request: Request) {
       'Content-Type': 'application/json',
     };
     
-    // Add ID token header for ID-JAG token exchange (MCP flows)
-    if (idToken) {
-      headers['X-ID-Token'] = idToken;
-    }
-    
-    // Add custom server token header for token exchange
-    if (customAccessToken) {
-      headers['X-Custom-Access-Token'] = customAccessToken;
+    // Add access token header for token exchange
+    if (accessToken) {
+      headers['X-Access-Token'] = accessToken;
     }
     
     const response = await fetch(`${backendUrl}/api/chat`, {

@@ -20,7 +20,8 @@ class OktaTokenValidator:
     
     def __init__(self):
         self.okta_domain = os.getenv('OKTA_DOMAIN')
-        self.client_id = os.getenv('OKTA_CLIENT_ID')
+        # Use Chat Assistant client ID if available, fallback to OKTA_CLIENT_ID for backward compatibility
+        self.client_id = os.getenv('OKTA_CHAT_ASSISTANT_CLIENT_ID') or os.getenv('OKTA_CLIENT_ID')
         self.audience = os.getenv('OKTA_AUDIENCE')
         # No default path - will use issuer from token
         self.issuer = None  # Will be set from token

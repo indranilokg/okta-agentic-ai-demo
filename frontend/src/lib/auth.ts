@@ -1,15 +1,29 @@
 import NextAuth from "next-auth";
 import OktaProvider from "next-auth/providers/okta";
 
+// Get custom authorization server issuer
+const getCustomIssuer = () => {
+  const oktaDomain = process.env.NEXT_PUBLIC_OKTA_BASE_URL || process.env.NEXT_PUBLIC_OKTA_DOMAIN;
+  const mainServerId = process.env.NEXT_PUBLIC_OKTA_MAIN_SERVER_ID || 'default';
+  if (oktaDomain) {
+    // Remove protocol if present
+    const domain = oktaDomain.replace(/^https?:\/\//, '');
+    return `https://${domain}/oauth2/${mainServerId}`;
+  }
+  // Fallback to OKTA_ISSUER if custom server not configured
+  return process.env.OKTA_ISSUER;
+};
+
 export const authOptions = {
   providers: [
     OktaProvider({
       clientId: process.env.OKTA_CLIENT_ID!,
       clientSecret: process.env.OKTA_CLIENT_SECRET!,
-      issuer: process.env.OKTA_ISSUER,
+      issuer: getCustomIssuer(),
       authorization: {
         params: {
           scope: "openid profile email",
+          audience: process.env.NEXT_PUBLIC_OKTA_AUDIENCE || process.env.NEXT_PUBLIC_OKTA_MAIN_AUDIENCE || "api://streamward-chat",
         },
       },
     }),
@@ -19,14 +33,15 @@ export const authOptions = {
       // Store only what's needed: Org ID token (for frontend display) and Custom access token (for token exchange)
       // Do NOT store: Org access token, Custom ID token (to reduce cookie size)
       if (account) {
-        // Store org ID token in JWT (needed for frontend display)
-        token.idToken = account.id_token;
-        // Store org ID token in separate cookie for logout as well
+        // Store both ID token (for logout) and access token (for chat assistant)
+        token.idToken = account.id_token; // Needed for logout
+        token.accessToken = account.access_token; // Used for chat assistant/MCP exchanges
+        // Store ID token in cookie for logout
         if (account.id_token) {
           try {
             const { cookies } = await import('next/headers');
             const cookieStore = await cookies();
-            cookieStore.set('org-id-token', account.id_token, {
+            cookieStore.set('id-token', account.id_token, {
               httpOnly: true,
               secure: process.env.NODE_ENV === 'production',
               sameSite: 'lax',
@@ -37,11 +52,10 @@ export const authOptions = {
             // Ignore if cookies not available
           }
         }
-        // Do NOT store org access token (not needed)
-        console.debug(`[JWT] Org ID token stored`);
+        console.debug(`[JWT] Custom authz server tokens stored (ID token for logout, access token for chat)`);
         if (process.env.NODE_ENV === 'development') {
           console.debug(`[JWT] ID Token (first 50): ${account.id_token?.substring(0, 50)}...`);
-          console.debug(`[JWT] Full ID Token: ${account.id_token}`);
+          console.debug(`[JWT] Access Token (first 50): ${account.access_token?.substring(0, 50)}...`);
         }
       }
       
@@ -49,7 +63,7 @@ export const authOptions = {
       if (trigger === 'signOut') {
         console.debug('[JWT] SignOut triggered - clearing tokens');
         token.idToken = undefined;
-        token.customAccessToken = undefined;
+        token.accessToken = undefined;
         return token;
       }
       
@@ -57,38 +71,18 @@ export const authOptions = {
         token.profile = profile;
       }
       
-      // Check for custom server tokens from OAuth callback (stored in cookies)
-      // Only store custom ACCESS token in JWT (needed for token exchange)
-      // Do NOT store custom ID token (not needed, reduces cookie size)
-      try {
-        const { cookies } = await import('next/headers');
-        const cookieStore = await cookies();
-        const customAccessTokenCookie = cookieStore.get('custom-access-token');
-        
-        if (customAccessTokenCookie?.value) {
-          token.customAccessToken = customAccessTokenCookie.value;
-        } else if (token.customAccessToken) {
-          // Tokens missing from cookies - likely logout
-          token.customAccessToken = undefined;
-        }
-      } catch (error) {
-        // Cookies might not be available in all contexts, ignore silently
-      }
-      
       return token;
     },
     async session({ session, token }: any) {
-      // If no idToken, user is logged out - return null to clear session
-      if (!token.idToken) {
-        console.debug('[Session] No idToken in token - user is logged out');
+      // If no accessToken, user is logged out - return null to clear session
+      if (!token.accessToken) {
+        console.debug('[Session] No accessToken in token - user is logged out');
         return null;
       }
       
-      // Store only what's needed:
-      // - Org ID token (for frontend display)
-      // - Custom access token (for token exchange)
-      session.idToken = token.idToken;
-      session.customAccessToken = token.customAccessToken;
+      // Store both tokens: ID token for logout, access token for chat assistant
+      session.idToken = token.idToken; // For logout only
+      session.accessToken = token.accessToken; // For chat assistant/MCP exchanges
       
       session.user = {
         ...session.user,

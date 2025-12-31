@@ -16,6 +16,7 @@ load_dotenv()
 from chat_assistant.assistant import StreamwardAssistant
 from api.routes.documents import router as documents_router
 from auth.okta_validator import get_current_user_optional
+from resource_servers.google_workspace import GoogleWorkspaceResourceServer
 
 # Configure logging
 # 
@@ -65,7 +66,10 @@ app.add_middleware(
 
 
 # Initialize services
-streamward_assistant = StreamwardAssistant()
+# Create Google Workspace server first, then pass it to StreamwardAssistant
+# This ensures both use the same instance for shared state (e.g., auth_sessions)
+google_workspace_server = GoogleWorkspaceResourceServer()
+streamward_assistant = StreamwardAssistant(google_workspace_server=google_workspace_server)
 
 # Include document routes
 app.include_router(documents_router)
@@ -96,8 +100,8 @@ class ChatMessage(BaseModel):
     message: str
     user_id: Optional[str] = None
     session_id: Optional[str] = None
-    id_token: Optional[str] = None  # For ID-JAG token exchange
-    access_token: Optional[str] = None  # For resource access
+    id_token: Optional[str] = None  # Not used - kept for backward compatibility
+    access_token: Optional[str] = None  # Used for chat assistant and MCP exchanges
 
 class ChatMessageList(BaseModel):
     messages: List[Dict[str, Any]]
@@ -140,6 +144,11 @@ class SimpleChatResponse(BaseModel):
     token_exchanges: Optional[List[Dict[str, Any]]] = None
     source_user_token: Optional[str] = None  # Original user token that initiated the workflow
     mcp_info: Optional[Dict[str, Any]] = None  # MCP server info and tools called
+    connected_accounts_flow: Optional[Dict[str, Any]] = None  # Connected Accounts flow info for Google Workspace
+    requires_linking: Optional[bool] = None  # Whether account linking is required
+    authorization_url: Optional[str] = None  # Authorization URL for account linking
+    auth_session: Optional[str] = None  # Auth session (stored server-side, not returned to frontend)
+    state: Optional[str] = None  # State parameter for OAuth flow
 
 class WorkflowRequest(BaseModel):
     workflow_type: str
@@ -191,19 +200,15 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
         
         logger.debug(f"[API] Chat: msg={user_message[:50]}..., session={session_id}, category={prompt_category}")
         
-        # Extract tokens from headers
-        # Support both header formats and body parameters for flexibility
-        custom_id_token = http_request.headers.get('X-ID-Token') or last_message.get('id_token')
-        custom_access_token = http_request.headers.get('X-Custom-Access-Token') or http_request.headers.get('X-Access-Token') or last_message.get('access_token')
+        # Extract access token from headers
+        # Support both header format and body parameters for flexibility
+        custom_access_token = http_request.headers.get('X-Access-Token') or last_message.get('access_token')
         
-        # Log token availability from each source
-        logger.info(f"[API] Token sources - X-ID-Token: {bool(http_request.headers.get('X-ID-Token'))}, X-Custom-Access-Token: {bool(http_request.headers.get('X-Custom-Access-Token'))}, X-Access-Token: {bool(http_request.headers.get('X-Access-Token'))}")
-        logger.debug(f"[API] Tokens: has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
+        # Log token availability
+        logger.info(f"[API] Token source - X-Access-Token: {bool(http_request.headers.get('X-Access-Token'))}")
+        logger.debug(f"[API] Access token available: {bool(custom_access_token)}")
         
-        # Log full tokens at DEBUG level for troubleshooting
-        if custom_id_token:
-            logger.debug(f"[API] ID Token (first 50): {custom_id_token[:50]}...")
-            logger.debug(f"[API] Full ID Token: {custom_id_token}")
+        # Log full token at DEBUG level for troubleshooting
         if custom_access_token:
             logger.debug(f"[API] Access Token (first 50): {custom_access_token[:50]}...")
             logger.debug(f"[API] Full Access Token: {custom_access_token}")
@@ -219,29 +224,17 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
             logger.debug(f"[API] User: authenticated via header={current_user.get('email')}")
             user_info = current_user.copy()
         elif custom_access_token:
-            # Validate custom access token and extract user info
+            # Validate access token and extract user info
             try:
                 from auth.okta_validator import token_validator
                 validated_user = await token_validator.validate_token(custom_access_token)
                 if validated_user:
-                    logger.debug(f"[API] User: validated from token={validated_user.get('email')}")
+                    logger.debug(f"[API] User: validated from access token={validated_user.get('email')}")
                     user_info = validated_user
                 else:
-                    logger.warning("[API] Custom access token validation failed")
+                    logger.warning("[API] Access token validation failed")
             except Exception as e:
                 logger.warning(f"[API] Token validation error: {str(e)}")
-        elif custom_id_token:
-            # Also validate ID token to extract user info for RAG access
-            try:
-                from auth.okta_validator import token_validator
-                validated_user = await token_validator.validate_token(custom_id_token)
-                if validated_user:
-                    logger.debug(f"[API] User: validated from ID token={validated_user.get('email')}")
-                    user_info = validated_user
-                else:
-                    logger.warning("[API] ID token validation failed")
-            except Exception as e:
-                logger.warning(f"[API] ID token validation error: {str(e)}")
         
         if not user_info:
             # Fallback to demo user
@@ -252,15 +245,12 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
                 "name": "Demo User"
             }
         
-        # Add tokens to user_info
-        if custom_id_token:
-            user_info["id_token"] = custom_id_token
-        
-        # For A2A workflows: requires valid access token
+        # Add access token to user_info for A2A workflows
         if custom_access_token:
             user_info["token"] = custom_access_token
+            user_info["access_token"] = custom_access_token
         
-        logger.info(f"[API] User_session: email={user_info['email']}, has_id_token={bool(custom_id_token)}, has_access_token={bool(custom_access_token)}")
+        logger.info(f"[API] User_session: email={user_info['email']}, has_access_token={bool(custom_access_token)}")
         logger.debug(f"[API] User_info keys: {list(user_info.keys())}")
         
         # Add prompt category to user_info if provided
@@ -284,7 +274,12 @@ async def chat_endpoint(request: ChatMessageList, http_request: Request, current
             agent_flow=response.get("agent_flow"),
             token_exchanges=response.get("token_exchanges"),
             source_user_token=response.get("source_user_token"),
-            mcp_info=response.get("mcp_info")
+            mcp_info=response.get("mcp_info"),
+            connected_accounts_flow=response.get("connected_accounts_flow"),
+            requires_linking=response.get("requires_linking"),
+            authorization_url=response.get("authorization_url"),
+            auth_session=response.get("auth_session"),  # Note: This is stored server-side, but included for debugging
+            state=response.get("state")
         )
         
         # Log response details
@@ -433,6 +428,126 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# Google Workspace Resource Server Endpoints
+@app.post("/api/resource/google-workspace/authorize")
+async def get_google_authorization_url(request: Request, current_user: Optional[dict] = Depends(get_current_user_optional)):
+    """
+    Get authorization URL for Google account linking.
+    
+    This endpoint is called when a Google token is not found in the vault.
+    Returns an authorization URL that the frontend should redirect the user to.
+    """
+    try:
+        # Get Okta access token from headers or user_info
+        okta_access_token = request.headers.get('X-Access-Token')
+        
+        if not okta_access_token:
+            # Try to get from current_user if available
+            if current_user and current_user.get("token"):
+                okta_access_token = current_user.get("token")
+            else:
+                raise HTTPException(status_code=401, detail="Okta access token required")
+        
+        # Extract user info from token for multi-user support
+        from auth.okta_validator import token_validator
+        user_info = await token_validator.validate_token(okta_access_token)
+        user_sub = user_info.get("sub") if user_info else None
+        
+        # Get authorization URL from Google Workspace server
+        result = await google_workspace_server._get_google_token_from_vault(okta_access_token, user_sub=user_sub)
+        
+        if result.get("requires_linking"):
+            return {
+                "requires_linking": True,
+                "authorization_url": result.get("authorization_url"),
+                "state": result.get("state")
+                # Note: auth_session is stored server-side, keyed by user_sub
+            }
+        elif result.get("token"):
+            # Token already exists - no linking needed
+            return {
+                "requires_linking": False,
+                "message": "Google account already linked"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=result.get("message", "Failed to get authorization URL"))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[API] Error getting Google authorization URL: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting authorization URL: {str(e)}")
+
+@app.post("/api/resource/google-workspace/complete-linking")
+async def complete_google_linking(request: Request, current_user: Optional[dict] = Depends(get_current_user_optional)):
+    """
+    Complete Google account linking using connect_code from callback.
+    
+    This endpoint is called after the user authorizes Google in the callback.
+    """
+    try:
+        body = await request.json()
+        connect_code = body.get("connect_code")
+        
+        if not connect_code:
+            raise HTTPException(status_code=400, detail="connect_code is required")
+        
+        # Get Okta access token
+        okta_access_token = request.headers.get('X-Access-Token')
+        if not okta_access_token:
+            if current_user and current_user.get("token"):
+                okta_access_token = current_user.get("token")
+            else:
+                raise HTTPException(status_code=401, detail="Okta access token required")
+        
+        # Extract user info from token for multi-user support
+        from auth.okta_validator import token_validator
+        user_info = await token_validator.validate_token(okta_access_token)
+        if not user_info:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user_sub = user_info.get("sub")
+        
+        logger.info(f"[API] complete-linking - user_info keys: {list(user_info.keys())}")
+        logger.info(f"[API] complete-linking - user_info['sub']: {user_info.get('sub')}")
+        logger.info(f"[API] complete-linking - user_info['email']: {user_info.get('email')}")
+        logger.info(f"[API] complete-linking - extracted user_sub: {user_sub}")
+        
+        if not user_sub:
+            raise HTTPException(status_code=400, detail="User identifier not found in token")
+        
+        # Complete linking (auth_session retrieved server-side by user_sub)
+        logger.info(f"[API] Completing Google linking for user: {user_sub}")
+        logger.debug(f"[API] Connect code length: {len(connect_code) if connect_code else 0}")
+        
+        result = await google_workspace_server._complete_linking_and_get_token(
+            connect_code=connect_code,
+            okta_access_token=okta_access_token,
+            user_sub=user_sub
+        )
+        
+        logger.debug(f"[API] Linking result: {result}")
+        
+        if result.get("error"):
+            error_msg = result.get("message", "Failed to complete linking")
+            logger.error(f"[API] Linking failed: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
+        
+        return {
+            "success": True,
+            "token": result.get("token"),
+            "token_type": result.get("token_type"),
+            "expires_in": result.get("expires_in"),
+            "scope": result.get("scope"),
+            "connection_id": result.get("connection_id"),
+            "user_id": result.get("user_id")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[API] Error completing Google linking: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error completing linking: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

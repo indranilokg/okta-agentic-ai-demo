@@ -27,8 +27,8 @@ class OktaAuth:
         self.main_server_id = os.getenv("OKTA_MAIN_SERVER_ID", "default")
         
         # Service app credentials for Chat Assistant (used for token exchanges)
-        self.client_id = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_ID") or os.getenv("OKTA_CLIENT_ID")
-        self.client_secret = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_SECRET") or os.getenv("OKTA_CLIENT_SECRET")
+        self.client_id = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_ID")
+        self.client_secret = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_SECRET")
         
         # Agent-specific service app credentials
         self.hr_service_client_id = os.getenv("OKTA_HR_SERVICE_CLIENT_ID")
@@ -41,7 +41,7 @@ class OktaAuth:
         self.redirect_uri = os.getenv("OKTA_REDIRECT_URI")
         
         if not all([self.domain, self.client_id, self.client_secret]):
-            raise ValueError("Missing required Okta configuration (domain, client_id, client_secret)")
+            raise ValueError("Missing required Okta configuration (OKTA_DOMAIN, OKTA_CHAT_ASSISTANT_CLIENT_ID, OKTA_CHAT_ASSISTANT_CLIENT_SECRET)")
         
         # Handle domain format (with or without https://)
         if self.domain.startswith("http://") or self.domain.startswith("https://"):

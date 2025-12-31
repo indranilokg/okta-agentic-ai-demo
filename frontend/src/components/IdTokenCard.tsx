@@ -3,10 +3,10 @@
 import { useState } from 'react';
 
 interface IdTokenCardProps {
-  idToken: string;
+  accessToken: string;
 }
 
-export default function IdTokenCard({ idToken }: IdTokenCardProps) {
+export default function IdTokenCard({ accessToken }: IdTokenCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [decodedToken, setDecodedToken] = useState<any>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -26,8 +26,8 @@ export default function IdTokenCard({ idToken }: IdTokenCardProps) {
   };
 
   const handleToggle = () => {
-    if (!decodedToken && idToken) {
-      setDecodedToken(decodeToken(idToken));
+    if (!decodedToken && accessToken) {
+      setDecodedToken(decodeToken(accessToken));
     }
     setIsExpanded(!isExpanded);
   };
@@ -42,7 +42,7 @@ export default function IdTokenCard({ idToken }: IdTokenCardProps) {
     }
   };
 
-  if (!idToken) return null;
+  if (!accessToken) return null;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm w-full">
@@ -52,7 +52,7 @@ export default function IdTokenCard({ idToken }: IdTokenCardProps) {
       >
         <div className="flex items-center space-x-2">
           <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-          <span className="font-medium text-gray-900">ID Token Details</span>
+          <span className="font-medium text-gray-900">Access Token Details</span>
         </div>
         <svg
           className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -105,7 +105,7 @@ export default function IdTokenCard({ idToken }: IdTokenCardProps) {
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-medium text-gray-700">Raw Token</h4>
               <button
-                onClick={() => copyToClipboard(idToken, 'raw')}
+                onClick={() => copyToClipboard(accessToken, 'raw')}
                 className="flex items-center space-x-1 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
               >
                 {copiedField === 'raw' ? (
@@ -126,7 +126,7 @@ export default function IdTokenCard({ idToken }: IdTokenCardProps) {
               </button>
             </div>
             <div className="bg-gray-50 rounded-md p-3 max-h-32 overflow-y-auto">
-              <code className="text-xs text-gray-800 break-all">{idToken}</code>
+              <code className="text-xs text-gray-800 break-all">{accessToken}</code>
             </div>
           </div>
         </div>

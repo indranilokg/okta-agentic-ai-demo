@@ -315,33 +315,33 @@ async def main():
         print(f"\n Loaded environment from: {env_path}")
     else:
         print(f"\n No .env file found at {env_path}")
-        print("   Please ensure OKTA_DOMAIN, OKTA_CLIENT_ID, and OKTA_CLIENT_SECRET are set")
+        print("   Please ensure OKTA_DOMAIN, OKTA_CHAT_ASSISTANT_CLIENT_ID, and OKTA_CHAT_ASSISTANT_CLIENT_SECRET are set")
     
     # Check required environment variables
     required_vars = ["OKTA_DOMAIN"]
     
-    # Check for Chat Assistant credentials (or legacy fallback)
-    chat_client_id = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_ID") or os.getenv("OKTA_CLIENT_ID")
-    chat_client_secret = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_SECRET") or os.getenv("OKTA_CLIENT_SECRET")
+    # Check for Chat Assistant credentials
+    chat_client_id = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_ID")
+    chat_client_secret = os.getenv("OKTA_CHAT_ASSISTANT_CLIENT_SECRET")
     
     if not chat_client_id or not chat_client_secret:
-        required_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_ID or OKTA_CLIENT_ID")
-        required_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_SECRET or OKTA_CLIENT_SECRET")
+        required_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_ID")
+        required_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_SECRET")
     
     missing_vars = []
     if not os.getenv("OKTA_DOMAIN"):
         missing_vars.append("OKTA_DOMAIN")
     if not chat_client_id:
-        missing_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_ID (or OKTA_CLIENT_ID)")
+        missing_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_ID")
     if not chat_client_secret:
-        missing_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_SECRET (or OKTA_CLIENT_SECRET)")
+        missing_vars.append("OKTA_CHAT_ASSISTANT_CLIENT_SECRET")
     
     if missing_vars:
         print(f"\n Missing required environment variables: {', '.join(missing_vars)}")
         print("\nPlease set these in your .env file:")
         print("  OKTA_DOMAIN=your-okta-domain.okta.com")
-        print("  OKTA_CHAT_ASSISTANT_CLIENT_ID=your-chat-assistant-service-app-id")
-        print("  OKTA_CHAT_ASSISTANT_CLIENT_SECRET=your-chat-assistant-service-app-secret")
+        print("  OKTA_CHAT_ASSISTANT_CLIENT_ID=your-chat-assistant-service-app-client-id")
+        print("  OKTA_CHAT_ASSISTANT_CLIENT_SECRET=your-chat-assistant-service-app-client-secret")
         print("\nOptional (for full cross-agent testing):")
         print("  OKTA_HR_SERVICE_CLIENT_ID=your-hr-service-app-id")
         print("  OKTA_HR_SERVICE_CLIENT_SECRET=your-hr-service-app-secret")

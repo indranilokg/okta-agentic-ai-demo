@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { checkAndTriggerCustomAuth } from '@/lib/custom-auth';
 import IdTokenCard from '@/components/IdTokenCard';
 import RAGCard from '@/components/RAGCard';
 import AgentFlowCard from '@/components/AgentFlowCard';
 import MCPCard from '@/components/MCPCard';
+import ConnectedAccountsCard from '@/components/ConnectedAccountsCard';
 import PromptLibrary from '@/components/PromptLibrary';
 
 interface Message {
@@ -15,6 +15,10 @@ interface Message {
   content: string;
   timestamp: Date;
   prompt_category?: string;
+  requiresLinking?: {
+    authorization_url: string;
+    state?: string;
+  };
 }
 
 interface RAGInfo {
@@ -93,36 +97,9 @@ export default function StreamwardAssistant() {
   // Log tokens on client side
   useEffect(() => {
     if (status === 'authenticated' && session) {
-      console.log(`[SESSION] Tokens available: idToken=${!!session.idToken}, customToken=${!!session.customAccessToken}`);
-      console.debug(`[SESSION] Org ID Token (first 50): ${session.idToken?.substring(0, 50) || 'N/A'}`);
-      console.debug(`[SESSION] Custom Access Token (first 50): ${session.customAccessToken?.substring(0, 50) || 'N/A'}`);
-    }
-  }, [status, session]);
-  
-  // Automatically trigger custom server OAuth flow after org auth succeeds
-  useEffect(() => {
-    if (status === 'authenticated' && session) {
-      // Check if we just logged out - don't trigger custom auth
-      const justLoggedOut = sessionStorage.getItem('just-logged-out') === 'true';
-      const urlParams = new URLSearchParams(window.location.search);
-      const fromLogout = urlParams.get('from_logout') === 'true';
-      const logoutSuccess = urlParams.get('logout') === 'success';
-      
-      // Skip custom auth if user just logged out
-      if (justLoggedOut || fromLogout || logoutSuccess) {
-        if (session.customAccessToken && !logoutSuccess) {
-          // User has custom token and NOT coming from logout - they're properly logged in
-          console.log('[CUSTOM_AUTH] User has custom token - clearing logout flag');
-          sessionStorage.removeItem('just-logged-out');
-        } else {
-          // No custom token and coming from logout - skip completely
-          console.log('[CUSTOM_AUTH] Skipping - user just logged out');
-          return;
-        }
-      }
-      
-      // Check if custom token is needed and trigger OAuth flow
-      checkAndTriggerCustomAuth(!!session.customAccessToken);
+      console.log(`[SESSION] Tokens available: idToken=${!!session.idToken} (for logout), accessToken=${!!session.accessToken} (for chat)`);
+      console.debug(`[SESSION] ID Token (first 50): ${session.idToken?.substring(0, 50) || 'N/A'}`);
+      console.debug(`[SESSION] Access Token (first 50): ${session.accessToken?.substring(0, 50) || 'N/A'}`);
     }
   }, [status, session]);
   
@@ -134,6 +111,22 @@ export default function StreamwardAssistant() {
   const [ragInfo, setRagInfo] = useState<RAGInfo | null>(null);
   const [mcpInfo, setMcpInfo] = useState<MCPInfo | null>(null);
   const [mcpQuery, setMcpQuery] = useState<string | null>(null);
+  const [requiresLinking, setRequiresLinking] = useState<{
+    authorization_url: string;
+    auth_session?: string;
+    state?: string;
+    originalRequest?: {
+      messages: Message[];
+      session_id: string;
+    };
+  } | null>(null);
+  const [pendingLinkingRequest, setPendingLinkingRequest] = useState<{
+    messages: Message[];
+    session_id: string;
+  } | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const [connectedAccountsFlow, setConnectedAccountsFlow] = useState<any>(null);
+  const [connectedAccountsQuery, setConnectedAccountsQuery] = useState<string | null>(null);
   const [agentFlow, setAgentFlow] = useState<AgentFlowStep[] | null>(null);
   const [tokenExchanges, setTokenExchanges] = useState<TokenExchange[] | null>(null);
   const [workflowType, setWorkflowType] = useState<string | null>(null);
@@ -168,6 +161,273 @@ export default function StreamwardAssistant() {
       ]);
     }
   }, [session, messages.length]);
+  
+  // Handle popup postMessage from authorization callback
+  useEffect(() => {
+    console.log('[POPUP] Setting up message listener...');
+    
+    const handleMessage = async (event: MessageEvent) => {
+      console.log('[POPUP] ===== MESSAGE RECEIVED =====');
+      console.log('[POPUP] Origin:', event.origin);
+      console.log('[POPUP] Expected origin:', window.location.origin);
+      console.log('[POPUP] Data:', event.data);
+      console.log('[POPUP] Data type:', typeof event.data);
+      console.log('[POPUP] Has pending request:', !!pendingLinkingRequest);
+      
+      // Verify origin for security
+      if (event.origin !== window.location.origin) {
+        console.warn('[POPUP] ⚠️ Ignoring message from different origin:', event.origin, 'expected:', window.location.origin);
+        return;
+      }
+
+      // Only process messages that have a type field (our messages)
+      if (!event.data || typeof event.data !== 'object' || !event.data.type) {
+        console.log('[POPUP] ⚠️ Ignoring message without type:', event.data);
+        return;
+      }
+
+      console.log('[POPUP] ✅ Processing message type:', event.data.type);
+
+      if (event.data.type === 'GOOGLE_AUTH_CODE_RECEIVED') {
+        console.log('[POPUP] ✅ Received GOOGLE_AUTH_CODE_RECEIVED message');
+        console.log('[POPUP] Connect code:', event.data.connect_code);
+        console.log('[POPUP] State:', event.data.state);
+        console.log('[POPUP] Full message data:', event.data);
+        
+        // Close popup reference
+        if (popupRef.current) {
+          console.log('[POPUP] Clearing popup reference');
+          popupRef.current = null;
+        }
+        
+        // Call backend to complete linking (backend has auth_session stored server-side)
+        if (event.data.connect_code) {
+          console.log('[POPUP] Calling backend to complete linking...');
+          setIsLoading(true);
+          
+          try {
+            const accessToken = session?.accessToken;
+            const response = await fetch('/api/resource/google-workspace/complete-linking', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(accessToken && { 'X-Access-Token': accessToken }),
+              },
+              body: JSON.stringify({
+                connect_code: event.data.connect_code
+              }),
+            });
+
+            const linkingData = await response.json();
+            
+            if (!response.ok) {
+              throw new Error(linkingData.error || 'Failed to complete linking');
+            }
+            
+            console.log('[POPUP] Linking completed successfully:', {
+              has_token: !!linkingData.token,
+              success: linkingData.success
+            });
+            
+            // Now retry the original request
+            if (pendingLinkingRequest) {
+              console.log('[POPUP] Retrying original request...');
+              
+              const chatResponse = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(accessToken && { 'X-Access-Token': accessToken }),
+                },
+                body: JSON.stringify(pendingLinkingRequest),
+              });
+
+              const data = await chatResponse.json();
+              
+              // Process the response normally
+              if (data.requires_linking) {
+                // Still requires linking - shouldn't happen but handle it
+                setRequiresLinking({
+                  authorization_url: data.authorization_url,
+                  state: data.state,
+                  originalRequest: pendingLinkingRequest
+                });
+              } else {
+                // Success - clear linking state
+                setRequiresLinking(null);
+                setPendingLinkingRequest(null);
+                
+                // Update Connected Accounts flow info
+                if (data.connected_accounts_flow) {
+                  setConnectedAccountsFlow(data.connected_accounts_flow);
+                  setConnectedAccountsQuery(pendingLinkingRequest.messages[pendingLinkingRequest.messages.length - 1]?.content || null);
+                }
+                
+                // Add assistant response
+                const assistantMessage: Message = {
+                  id: (Date.now() + 1).toString(),
+                  role: 'assistant',
+                  content: data.content || 'Account linked successfully! Your request has been processed.',
+                  timestamp: new Date(),
+                };
+                
+                setTimeout(() => {
+                  setMessages(prev => [...prev, assistantMessage]);
+                  setIsTyping(false);
+                }, 1000);
+              }
+            } else {
+              // No pending request - just show success message
+              const successMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: 'Google account linked successfully!',
+                timestamp: new Date(),
+              };
+              setMessages(prev => [...prev, successMessage]);
+              setRequiresLinking(null);
+              setPendingLinkingRequest(null);
+            }
+          } catch (error) {
+            console.error('[POPUP] Error completing linking:', error);
+            const errorMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: `Failed to complete Google account linking: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+              timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, errorMessage]);
+            setRequiresLinking(null);
+            setPendingLinkingRequest(null);
+          } finally {
+            setIsLoading(false);
+          }
+        } else {
+          console.warn('[POPUP] ⚠️ No connect_code in message:', event.data);
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: '⚠️ Received authorization callback but no connect_code was found.',
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setRequiresLinking(null);
+        }
+      } else if (event.data && event.data.type === 'GOOGLE_LINKING_ERROR') {
+        console.error('[POPUP] Linking error:', event.data.error);
+        // Only show error if we actually have a pending request (to avoid showing errors from unrelated popups)
+        if (pendingLinkingRequest) {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: `Failed to link Google account: ${event.data.error || 'Unknown error'}. Please try again.`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setRequiresLinking(null);
+          setPendingLinkingRequest(null);
+        }
+      } else {
+        console.warn('[POPUP] Received unknown message type:', event.data);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    console.log('[POPUP] ✅ Message listener attached');
+    
+    // Log all messages for debugging
+    const debugHandler = (event: MessageEvent) => {
+      console.log('[POPUP] [DEBUG] All messages:', {
+        origin: event.origin,
+        expectedOrigin: window.location.origin,
+        data: event.data,
+        dataType: typeof event.data,
+        hasType: event.data && typeof event.data === 'object' && 'type' in event.data
+      });
+    };
+    window.addEventListener('message', debugHandler);
+    
+    return () => {
+      console.log('[POPUP] Removing message listeners');
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('message', debugHandler);
+    };
+  }, [session, pendingLinkingRequest]);
+
+  // Handle Google callback (legacy - for direct redirects, now handled via popup)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && session) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isCallback = urlParams.get('google_callback') === 'true';
+      const connectCode = urlParams.get('code');
+      const state = urlParams.get('state');
+      
+      if (isCallback && connectCode) {
+        // Send connect_code to backend to complete linking
+        // Backend will retrieve auth_session server-side using user's authenticated session
+        const completeLinking = async () => {
+          try {
+            const accessToken = session?.accessToken;
+            const response = await fetch('/api/resource/google-workspace/complete-linking', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(accessToken && { 'X-Access-Token': accessToken }),
+              },
+              body: JSON.stringify({
+                connect_code: connectCode,
+                // Note: auth_session is retrieved server-side by user's authenticated session
+              }),
+            });
+            
+            const data = await response.json();
+            
+              if (data.success) {
+                // Update Connected Accounts flow to show linking_completed state
+                setConnectedAccountsFlow({
+                  flow_state: 'linking_completed',
+                  google_token: data.token ? data.token.substring(0, 50) + '...' : undefined,
+                  token_type: data.token_type,
+                  expires_in: data.expires_in,
+                  scope: data.scope,
+                });
+                
+                // Add success message
+                const successMessage: Message = {
+                  id: Date.now().toString(),
+                  role: 'assistant',
+                  content: 'Google account successfully linked! You can now access your calendar.',
+                  timestamp: new Date(),
+                };
+                setMessages(prev => [...prev, successMessage]);
+                
+                // Clean up URL
+                window.history.replaceState({}, '', window.location.pathname);
+              } else {
+              throw new Error(data.message || 'Failed to complete linking');
+            }
+          } catch (error) {
+            console.error('[GOOGLE_CALLBACK] Error completing linking:', error);
+            const errorMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: 'Failed to complete Google account linking. Please try again.',
+              timestamp: new Date(),
+            };
+            setMessages(prev => [...prev, errorMessage]);
+          }
+        };
+        
+        completeLinking();
+        
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [session]);
+  
+  // Note: auth_session is now stored server-side, keyed by user's authenticated session
+  // No need to store it in frontend sessionStorage anymore
 
   // Show loading while checking authentication
   if (status === 'loading') {
@@ -335,20 +595,20 @@ export default function StreamwardAssistant() {
     // Clear previous MCP info when starting a new message
     setMcpInfo(null);
     setMcpQuery(null);
+    // Clear Connected Accounts flow unless it's a linking completion
+    // (linking completion is handled in the callback useEffect)
     setIsTyping(true);
 
     try {
-      // Extract tokens from session for ID-JAG exchange
-      const idToken = session?.idToken;
-      const accessToken = session?.customAccessToken;
+      // Extract access token from session for ID-JAG exchange
+      const accessToken = session?.accessToken;
       
       // Log token availability
-      console.log(`[MESSAGE] Sending tokens: idToken=${!!idToken}, accessToken=${!!accessToken}`);
+      console.log(`[MESSAGE] Sending access token: ${!!accessToken}`);
       
-      // Prepare message with tokens
+      // Prepare message with access token
       const messageWithTokens = {
         ...userMessage,
-        id_token: idToken,
         access_token: accessToken,
       };
       
@@ -356,8 +616,7 @@ export default function StreamwardAssistant() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // Also send tokens in headers for additional security/flexibility
-          ...(idToken && { 'X-ID-Token': idToken }),
+          // Send access token in header
           ...(accessToken && { 'X-Access-Token': accessToken }),
         },
         body: JSON.stringify({
@@ -371,6 +630,7 @@ export default function StreamwardAssistant() {
       // Log response summary
       console.log(`[RESPONSE] workflow=${data.workflow_info?.workflow_type}, hasAgentFlow=${Array.isArray(data.agent_flow)}, usedRag=${data.used_rag}, hasMcp=${!!data.mcp_info}`);
       console.debug(`[RESPONSE] Full response keys: ${Object.keys(data).join(', ')}`);
+      console.log(`[RESPONSE] requires_linking: ${data.requires_linking}, authorization_url: ${!!data.authorization_url}`);
       
       // Update RAG info if RAG was used
       if (data.used_rag && data.rag_info) {
@@ -382,6 +642,70 @@ export default function StreamwardAssistant() {
       } else {
         // Clear RAG info if not used
         setRagInfo(null);
+      }
+      
+      // Check if account linking is required (for Google Workspace)
+      if (data.requires_linking) {
+        console.log('[LINKING] Requires linking detected:', {
+          authorization_url: data.authorization_url,
+          state: data.state,
+          content: data.content
+        });
+        
+        // Store the original request for retry after linking
+        const originalRequest = {
+          messages: [...messages, messageWithTokens],
+          session_id: sessionId,
+        };
+        setPendingLinkingRequest(originalRequest);
+        setRequiresLinking({
+          authorization_url: data.authorization_url,
+          auth_session: data.auth_session,
+          state: data.state,
+          originalRequest: originalRequest
+        });
+        
+        // Update assistant message to show linking prompt with button
+        const linkingMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.content || 'Google account authorization is required to access your calendar. Please click the button below to authorize.',
+          timestamp: new Date(),
+          requiresLinking: {
+            authorization_url: data.authorization_url,
+            state: data.state
+          }
+        };
+        
+        console.log('[LINKING] Created linking message:', linkingMessage);
+        
+        setTimeout(() => {
+          setMessages(prev => {
+            const updated = [...prev, linkingMessage];
+            console.log('[LINKING] Messages updated, total:', updated.length);
+            console.log('[LINKING] Last message requiresLinking:', updated[updated.length - 1]?.requiresLinking);
+            return updated;
+          });
+          setIsTyping(false);
+        }, 1000);
+        setIsLoading(false);
+        return; // Exit early - don't process as normal message
+      } else {
+        setRequiresLinking(null);
+        setPendingLinkingRequest(null);
+      }
+      
+      // Update Connected Accounts flow info if present
+      if (data.connected_accounts_flow) {
+        console.log(`[CONNECTED_ACCOUNTS] Flow info received:`, data.connected_accounts_flow);
+        setConnectedAccountsFlow(data.connected_accounts_flow);
+        setConnectedAccountsQuery(userMessage.content);
+      } else {
+        // Clear if not present (unless it's a linking_required state which is handled above)
+        if (!data.requires_linking) {
+          setConnectedAccountsFlow(null);
+          setConnectedAccountsQuery(null);
+        }
       }
       
       // Update MCP info if MCP was used
@@ -462,22 +786,17 @@ export default function StreamwardAssistant() {
   const handleLogout = () => {
     console.log('[LOGOUT] ===== LOGOUT HANDLER STARTED =====');
     
-    // Get ID token and client ID BEFORE signing out
+    // Get ID token (for logout) and client ID BEFORE signing out
     const idToken = session?.idToken;
-    const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || 'https://your-domain.okta.com';
+    const oktaBaseUrl = process.env.NEXT_PUBLIC_OKTA_BASE_URL || process.env.NEXT_PUBLIC_OKTA_DOMAIN || 'https://your-domain.okta.com';
+    const mainServerId = process.env.NEXT_PUBLIC_OKTA_MAIN_SERVER_ID || 'default';
     const clientId = process.env.NEXT_PUBLIC_OKTA_CLIENT_ID;
     
     console.log('[LOGOUT] idToken available:', !!idToken);
     console.log('[LOGOUT] clientId available:', !!clientId);
     
-    // Set logout flag to prevent custom auth from triggering
-    sessionStorage.setItem('just-logged-out', 'true');
-    sessionStorage.setItem('just-logged-out-time', Date.now().toString());
-    
     // Clear client-side storage
-    sessionStorage.removeItem('custom-auth-initiated');
-    sessionStorage.removeItem('custom-auth-state');
-    sessionStorage.removeItem('custom-auth-verifier');
+    sessionStorage.clear();
     console.log('[LOGOUT] Cleared sessionStorage');
     
     // FIRST: Sign out from NextAuth to clear session and cookies
@@ -488,17 +807,18 @@ export default function StreamwardAssistant() {
     }).then(() => {
       console.log('[LOGOUT] NextAuth signOut completed - cookies cleared');
       
-      // SECOND: Redirect to Okta logout
-      // Do NOT include post_logout_redirect_uri - it causes "canceled" status
-      // Just use id_token_hint like the working okta-cross-app-access-demo
+      // SECOND: Redirect to Okta logout (custom authorization server)
+      // Use ID token hint for logout (most reliable method)
+      const customIssuer = `${oktaBaseUrl}/oauth2/${mainServerId}`;
       if (clientId && idToken) {
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?id_token_hint=${idToken}`;
-        console.log('[LOGOUT] Redirecting to Okta logout with id_token_hint');
+        // Use ID token hint for logout (preferred method)
+        const oktaLogoutUrl = `${customIssuer}/v1/logout?id_token_hint=${idToken}&post_logout_redirect_uri=${encodeURIComponent(window.location.origin)}`;
+        console.log('[LOGOUT] Redirecting to custom authz server logout with id_token_hint');
         window.location.href = oktaLogoutUrl;
       } else if (clientId) {
         // Fallback to client_id based logout
-        const oktaLogoutUrl = `${oktaBaseUrl}/oauth2/v1/logout?client_id=${clientId}`;
-        console.log('[LOGOUT] Redirecting to Okta logout with client_id');
+        const oktaLogoutUrl = `${customIssuer}/v1/logout?client_id=${clientId}&post_logout_redirect_uri=${encodeURIComponent(window.location.origin)}`;
+        console.log('[LOGOUT] Redirecting to custom authz server logout with client_id');
         window.location.href = oktaLogoutUrl;
       } else {
         // Fallback to basic logout
@@ -619,6 +939,105 @@ export default function StreamwardAssistant() {
                           }`}
                         >
                           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          
+                          {/* Authorization Button in Assistant Message */}
+                          {message.role === 'assistant' && message.requiresLinking && message.requiresLinking.authorization_url && (
+                            <div className="mt-3 pt-3 border-t border-gray-200">
+                              <button
+                                onClick={() => {
+                                  const authUrl = message.requiresLinking?.authorization_url;
+                                  if (authUrl) {
+                                    // Open popup window with authorization URL as-is (don't modify it)
+                                    const width = 600;
+                                    const height = 700;
+                                    const left = (window.screen.width - width) / 2;
+                                    const top = (window.screen.height - height) / 2;
+                                    
+                                    const popup = window.open(
+                                      authUrl,
+                                      'google-auth',
+                                      `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=yes,status=yes,menubar=no,scrollbars=yes,resizable=yes`
+                                    );
+                                    
+                                    if (!popup) {
+                                      alert('Please allow popups for this site to complete authorization.');
+                                      return;
+                                    }
+                                    
+                                    // Store popup reference to monitor it
+                                    popupRef.current = popup;
+                                    console.log('[POPUP] Opened authorization popup with URL:', authUrl);
+                                    console.log('[POPUP] Popup reference stored');
+                                    console.log('[POPUP] Check if redirect_uri is in URL:', authUrl.includes('redirect_uri'));
+                                    
+                                    // Monitor popup navigation (if possible)
+                                    try {
+                                      // Try to access popup location (may be blocked by CORS)
+                                      const checkLocation = setInterval(() => {
+                                        try {
+                                          if (popup.closed) {
+                                            console.log('[POPUP] Popup was closed');
+                                            clearInterval(checkLocation);
+                                            popupRef.current = null;
+                                            return;
+                                          }
+                                          // Try to read popup location (will fail if cross-origin)
+                                          try {
+                                            const popupLocation = popup.location.href;
+                                            console.log('[POPUP] Popup location:', popupLocation);
+                                            if (popupLocation.includes('/api/resource/google-workspace/callback')) {
+                                              console.log('[POPUP] ✅ Callback route detected in popup!');
+                                            }
+                                          } catch (e) {
+                                            // Cross-origin - can't read location, that's expected
+                                            // console.log('[POPUP] Cannot read popup location (cross-origin):', e.message);
+                                          }
+                                        } catch (e) {
+                                          console.error('[POPUP] Error checking popup:', e);
+                                        }
+                                      }, 500);
+                                      
+                                      // Clean up interval after 5 minutes
+                                      setTimeout(() => {
+                                        clearInterval(checkLocation);
+                                      }, 300000);
+                                    } catch (e) {
+                                      console.warn('[POPUP] Could not monitor popup location:', e);
+                                    }
+                                    
+                                    // Monitor popup state (closed check)
+                                    const checkPopup = setInterval(() => {
+                                      try {
+                                        if (popup.closed) {
+                                          console.log('[POPUP] Popup was closed');
+                                          clearInterval(checkPopup);
+                                          popupRef.current = null;
+                                        }
+                                      } catch (e) {
+                                        // Popup might be cross-origin, ignore errors
+                                        clearInterval(checkPopup);
+                                      }
+                                    }, 1000);
+                                    
+                                    // Clean up interval after 5 minutes
+                                    setTimeout(() => {
+                                      clearInterval(checkPopup);
+                                    }, 300000);
+                                  }
+                                }}
+                                className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+                              >
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                </svg>
+                                <span>Authorize Google</span>
+                              </button>
+                            </div>
+                          )}
+                          
                           <p className={`text-xs mt-2 ${
                             message.role === 'user' ? 'text-indigo-100' : 'text-gray-400'
                           }`}>
@@ -688,9 +1107,10 @@ export default function StreamwardAssistant() {
           {/* Sidebar - Token Card, RAG Card, Agent Flow Card, A2A Card, and System Status */}
           <div className="lg:col-span-1">
             <div className="sticky top-6 space-y-4">
-              <IdTokenCard idToken={session?.idToken || ''} />
+              <IdTokenCard accessToken={session?.accessToken || ''} />
               <RAGCard ragInfo={ragInfo} />
               <MCPCard mcpInfo={mcpInfo} query={mcpQuery || undefined} />
+              <ConnectedAccountsCard flowInfo={connectedAccountsFlow} query={connectedAccountsQuery || undefined} />
               {/* Agent Flow Card - Always visible */}
               <AgentFlowCard 
                 agentFlow={agentFlow} 

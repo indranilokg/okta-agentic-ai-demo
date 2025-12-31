@@ -3,7 +3,7 @@ Okta Cross-App Access (ID-JAG) Manager
 
 Enables secure token exchange for MCP access using the new Okta AI SDK.
 Implements the 4-step ID-JAG flow:
-1. Exchange ID token for ID-JAG token
+1. Exchange access token for ID-JAG token
 2. Verify ID-JAG token (optional, for logging)
 3. Exchange ID-JAG for authorization server token
 4. Verify authorization server token
@@ -35,7 +35,7 @@ class OktaCrossAppAccessManager:
     
     Usage:
         manager = OktaCrossAppAccessManager()
-        mcp_token = await manager.exchange_id_to_mcp_token(user_id_token)
+        mcp_token = await manager.exchange_id_to_mcp_token(user_access_token)
         is_valid = await manager.verify_mcp_token(mcp_token)
     """
     
@@ -57,7 +57,7 @@ class OktaCrossAppAccessManager:
             try:
                 agent_private_key = json.loads(agent_private_key_str) if isinstance(agent_private_key_str, str) else agent_private_key_str
                 
-                # STEP 1 Config: ID token → ID-JAG token exchange
+                # STEP 1 Config: Access token → ID-JAG token exchange
                 # Uses JWT bearer assertion with agent credentials
                 # Note: authorization_server_id is "default" because we POST to /oauth2/v1/token
                 self.main_config = OktaAIConfig(
@@ -95,18 +95,18 @@ class OktaCrossAppAccessManager:
         
         logger.debug(f"[ID-JAG] Initialized: main_org={self.okta_domain}, has_mcp_config={bool(self.mcp_config)}")
     
-    async def exchange_id_to_mcp_token(self, user_id_token: str) -> Optional[Dict[str, Any]]:
+    async def exchange_id_to_mcp_token(self, user_access_token: str) -> Optional[Dict[str, Any]]:
         """
-        Exchange user's ID token for MCP access token using ID-JAG.
+        Exchange user's access token for MCP access token using ID-JAG.
         
         4-step process:
-        1. ID token → ID-JAG token (org audience)
+        1. Access token → ID-JAG token (org audience)
         2. ID-JAG token verification (optional, for logging)
         3. ID-JAG → MCP auth server token
         4. MCP token verification (in calling code)
         
         Args:
-            user_id_token: User's ID token from Okta
+            user_access_token: User's access token from Okta
             
         Returns:
             Dict with access_token, expires_in, and token_type, or None if failed
@@ -116,24 +116,29 @@ class OktaCrossAppAccessManager:
                 logger.error(" MCP SDK not configured. ID-JAG exchange not available.")
                 return None
             
+            # Validate that access token is provided
+            if not user_access_token:
+                logger.error("[ID-JAG] No access token provided.")
+                return None
+            
             logger.debug("[ID-JAG] Starting token exchange")
             
-            # STEP 1: Exchange ID token for ID-JAG token
+            # STEP 1: Exchange access token for ID-JAG token
             id_jag_audience = f"{self.okta_domain}/oauth2/{self.mcp_config.authorization_server_id}"
-            logger.debug(f"[ID-JAG] STEP 1: Exchanging to {id_jag_audience}")
+            logger.debug(f"[ID-JAG] STEP 1: Exchanging access token to {id_jag_audience}")
             
-            try:
-                id_jag_result = self.sdk_main.cross_app_access.exchange_id_token(
-                    id_token=user_id_token,
-                    audience=id_jag_audience,
-                    scope="mcp:read"
-                )
-                logger.info(f"[ID-JAG] STEP 1 SUCCESS: expires_in={id_jag_result.expires_in}s")
-                logger.debug(f"[ID-JAG] ID-JAG token (first 50): {id_jag_result.access_token[:50]}...")
-                logger.debug(f"[ID-JAG] Full ID-JAG token: {id_jag_result.access_token}")
-            except Exception as e:
-                logger.error(f"[ID-JAG] STEP 1 FAILED: {str(e)}", exc_info=True)
-                return None
+            # Exchange access token for ID-JAG token
+            logger.debug("[ID-JAG] Using access token for exchange")
+            id_jag_result = self.sdk_main.cross_app_access.exchange_token(
+                token=user_access_token,
+                token_type="access_token",
+                audience=id_jag_audience,
+                scope="mcp:read"
+            )
+            
+            logger.info(f"[ID-JAG] STEP 1 SUCCESS: expires_in={id_jag_result.expires_in}s")
+            logger.debug(f"[ID-JAG] ID-JAG token (first 50): {id_jag_result.access_token[:50]}...")
+            logger.debug(f"[ID-JAG] Full ID-JAG token: {id_jag_result.access_token}")
             
             # STEP 2: Verify ID-JAG token (optional, for audit trail)
             logger.debug("[ID-JAG] STEP 2: Verifying ID-JAG token")
