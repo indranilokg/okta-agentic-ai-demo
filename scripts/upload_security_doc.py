@@ -118,7 +118,7 @@ async def upload_security_document():
         print(f"   Document owner will be: {TEST_USER_EMAIL}")
         print()
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             upload_response = await client.post(
                 f"{API_BASE_URL}/api/documents/upload",
                 headers={
